@@ -213,7 +213,9 @@ device_name() {
 
 ensure_node() {
     # 客户端默认拿 os.Hostname() 当节点名，Android 上固定是 localhost，多台设备直接撞名。
-    # 已有名字就保留；空着、或还是老版本生成的 android-xxxxxx，改成机型名。
+    # 已经有名字就保留；空着、或还是老版本生成的 android-xxxxxx，改成机型名。
+    # 用户用 `o2p node` 自己定过就不动（node_locked），否则手动起的名字会被开机覆盖掉。
+    [ -f "$DATA/node_locked" ] && return 0
     cur=$(field Node)
     if [ -n "$cur" ] && ! printf '%s' "$cur" | grep -Eq '^android-[0-9a-f]{4,8}$'; then
         return 0
@@ -268,7 +270,12 @@ set_token() {
 
 set_node() {
     case "$1" in
-        '') echo "用法： o2p node <节点名>（8-31 个字符）"; return 1 ;;
+        '') echo "用法： o2p node <节点名>（8-31 个字符），或 o2p node auto 恢复按机型命名"; return 1 ;;
+        auto|AUTO)
+            rm -f "$DATA/node_locked"
+            n=$(ensure_node)
+            echo "已恢复自动命名：${n:-保持现有}（重启生效）"
+            return 0 ;;
     esac
     n=$(printf '%s' "$1" | wc -c)
     if [ "$n" -lt 8 ] || [ "$n" -gt 31 ]; then
@@ -278,7 +285,9 @@ set_node() {
     if grep -q '"Node"' "$CFG"; then
         sed -i "s/\"Node\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"Node\": \"$1\"/" "$CFG"
     fi
-    echo "节点名已写入，重启生效"
+    # 定了就不让开机时的自动命名改回去；改成老名字（android-e06696）等于把控制台那台旧设备认回来
+    echo 1 > "$DATA/node_locked"
+    echo "节点名已写入并锁定，重启生效"
     stop >/dev/null
     sleep 1
     start
@@ -412,6 +421,6 @@ case "${1:-status}" in
     diag)       diag ;;
     config)     cat "$CFG" ;;
     *)
-        echo "用法: o2p <status|state|start|stop|restart|token <TOKEN>|node <名字>|autostart on|off|log [行数]|clearlog|export|diag|config>"
+        echo "用法: o2p <status|state|start|stop|restart|token <TOKEN>|node <名字>|node auto|autostart on|off|log [行数]|clearlog|export|diag|config>"
         ;;
 esac

@@ -54,13 +54,22 @@ su -c o2p status
 
 **改节点名 = 在控制台换一台设备。** 服务端是按节点名做设备标识的（`core/config.go` 里的 `NodeNameToID`），名字一变就是新设备：旧设备留在列表里变成离线，挂在它下面的转发规则不会跟过来。所以老版本留下的 `android-xxxxxx` 被自动改成机型名之后，去控制台把旧的那台删掉就行。
 
+反过来也成立：把名字改回原来的 `android-xxxxxx`，认回来的就是控制台里那台旧设备，它的转发规则、备注都还在。
+
+```sh
+su -c o2p node android-e06696   # 认回旧设备（这个名字是锁定状态，开机不会再被改成机型名）
+su -c o2p node auto             # 解锁，恢复按机型自动命名
+```
+
+`o2p node` 会写一个 `node_locked` 标记，之后开机不再自动改名字。
+
 ## 命令
 
 | 命令 | 作用 |
 | --- | --- |
 | `o2p` / `o2p status` | 版本、节点名、token、进程状态、开机自启、本地规则条数 |
 | `o2p token <TOKEN>` | 写入 token 并重启服务 |
-| `o2p node <名字>` | 固定节点名（8-31 字符） |
+| `o2p node <名字>` | 固定节点名（8-31 字符），并锁住不让开机自动改名；`o2p node auto` 解锁 |
 | `o2p start` / `o2p stop` / `o2p restart` | 手动控制 |
 | `o2p autostart on` / `off` | 开机自启开关（界面里也有同一个开关） |
 | `o2p log [行数]` | 看日志，默认 60 行 |
