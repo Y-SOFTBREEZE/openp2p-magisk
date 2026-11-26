@@ -87,8 +87,10 @@ su -c o2p node auto             # 解锁，恢复按机型自动命名
 **划掉 KernelSU 的后台不影响它。** 从模块页点「启动」时，命令是 `ksu.exec` 起的，那个 shell 属于管理器的进程组；Android 划掉最近任务会 `kill(-pgid)`，`nohup` 只挡 `SIGHUP`，挡不住整组收到的 `SIGKILL`，客户端就跟着一起死。现在 `o2p start` 和 `service.sh` 都用 `setsid` 起守护（`pgid` 等于自己的 pid，自成会话），管理器怎么退、`magiskd` 怎么重启都跟它没关系。核对：
 
 ```sh
-ps -o PID,PGID,SID,NAME -p $(pidof openp2p)   # PGID / SID 都等于它自己的 PID 才对
+awk '{print "pid="$1, "ppid="$4, "pgid="$5, "sid="$6}' /proc/$(pidof openp2p)/stat
 ```
+
+`pgid` 和 `sid` 都等于它自己的 pid，就说明已经独立成会话了（`ppid=1` 是正常的，被 init 收养）。
 
 **会被 LMK 杀掉，但拉得回来。** 实测过一次：客户端在 `P2PNetwork init` 中间直接消失，日志里连一行错误都没有（被 `SIGKILL` 只能是这样），守护 20 秒后才把它拉起来。所以现在 `daemon.sh` 给守护自己和客户端都写 `oom_score_adj = -1000`（root 才有权限，等于不参与 LMK 打分），重启间隔也从 20 秒缩到 5 秒。
 
