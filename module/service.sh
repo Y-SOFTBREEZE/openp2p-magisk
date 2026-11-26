@@ -58,7 +58,14 @@ if [ -z "$token" ] || [ "$token" = "0" ]; then
     skip "未配置 token，跳过启动。在模块界面填 token"
 fi
 
-# 守护循环在 daemon.sh 里：openp2p 自己的 -d 依赖 systemd，Android 没有
-nohup sh "$DATA/daemon.sh" >/dev/null 2>&1 &
+# 守护循环在 daemon.sh 里：openp2p 自己的 -d 依赖 systemd，Android 没有。
+# setsid 自成会话，别跟 magiskd 分在同一个进程组（管理器 / magiskd 重启时会被一起收走）
+if [ -x /system/bin/setsid ]; then
+    /system/bin/setsid sh "$DATA/daemon.sh" </dev/null >/dev/null 2>&1 &
+elif [ -x /system/bin/toybox ]; then
+    /system/bin/toybox setsid sh "$DATA/daemon.sh" </dev/null >/dev/null 2>&1 &
+else
+    nohup sh "$DATA/daemon.sh" </dev/null >/dev/null 2>&1 &
+fi
 sleep 2
 echo "$(date '+%F %T') 守护已启动 (pid $(cat "$PIDF" 2>/dev/null))" >> "$SUPLOG"

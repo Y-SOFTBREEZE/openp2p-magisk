@@ -82,6 +82,22 @@ daemon_pid() {
     echo "$p"
 }
 
+# 脱离调用者的进程组。从 KernelSU 模块页点「启动」时，ksu.exec 起的 shell 属于
+# 管理器的进程组，划掉管理器后台 Android 会 kill(-pgid)，nohup 只挡 SIGHUP 挡不住
+# 组信号，客户端就跟着一起死。setsid 让它自成会话（pgid = 自己的 pid），
+# 管理器怎么退都不影响；从 service.sh 起的也走这里，理由一样（magiskd 重启同理）。
+spawn() {
+    S=
+    [ -x /system/bin/setsid ] && S=/system/bin/setsid
+    if [ -z "$S" ] && command -v setsid >/dev/null 2>&1; then S=setsid; fi
+    if [ -z "$S" ] && [ -x /system/bin/toybox ]; then S="/system/bin/toybox setsid"; fi
+    if [ -n "$S" ]; then
+        $S sh "$1" </dev/null >/dev/null 2>&1 &
+    else
+        nohup sh "$1" </dev/null >/dev/null 2>&1 &
+    fi
+}
+
 start() {
     ensure_cfg
     tok=$(field Token)
@@ -99,8 +115,7 @@ start() {
     fi
     mkdir -p "$DATA/log" "$DATA/run"
     rm -f "$DATA/run/stopped"
-    # nohup + 独立脚本，WebUI 里点启动时进程不会随管理器 shell 一起退出
-    nohup sh "$(daemon_path)" >/dev/null 2>&1 &
+    spawn "$(daemon_path)"
     sleep 3
     if [ -n "$(running)" ]; then
         echo "已启动 (pid $(running))"
@@ -277,20 +292,22 @@ set_node() {
             echo "已恢复自动命名：${n:-保持现有}（重启生效）"
             return 0 ;;
     esac
-    n=$(printf '%s' "$1" | wc -c)
+    # 名字要落到 JSON 和 sed 替换串里：引号、反斜杠、& | 会把配置文件写坏，直接换掉
+    name=$(printf '%s' "$1" | sed -e 's/"/-/g' -e 's/\\/-/g' -e 's/&/-/g' -e 's/|/-/g')
+    n=$(printf '%s' "$name" | wc -c)
     if [ "$n" -lt 8 ] || [ "$n" -gt 31 ]; then
         echo "节点名长度必须在 8-31 之间，当前 $n"
         return 1
     fi
     if grep -q '"Node"' "$CFG"; then
-        sed -i "s/\"Node\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"Node\": \"$1\"/" "$CFG"
+        sed -i "s/\"Node\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"Node\": \"$name\"/" "$CFG"
     fi
     # 定了就不让开机时的自动命名改回去；改成老名字（android-e06696）等于把控制台那台旧设备认回来
     echo 1 > "$DATA/node_locked"
-    echo "节点名已写入并锁定，重启生效"
     stop >/dev/null
     sleep 1
-    start
+    start >/dev/null
+    echo "已改名：$name（控制台按名字认设备，这次算一台新的）"
 }
 
 set_autostart() {

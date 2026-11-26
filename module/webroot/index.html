@@ -94,11 +94,14 @@
   .btn.stop{background:var(--bad-bg);border-color:var(--bad-bd);color:var(--bad-fg)}
   .btn.restart{background:var(--alt-bg);border-color:var(--alt-bd);color:var(--alt-fg)}
 
-  /* token */
-  .tkrow{display:flex;gap:8px}
-  .tkin{position:relative;flex:1 1 auto;min-width:0;display:flex}
+  /* 设置：一行一个字段，标签在上，输入 + 保存并排 */
+  .sett{padding:14px 16px}
+  .srow{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;
+        column-gap:9px;row-gap:4px;align-items:end}
+  .srow + .srow{margin-top:13px;padding-top:13px;border-top:1px solid var(--line)}
+  .slbl{grid-area:1/1;font-size:11.5px;color:var(--dim);letter-spacing:.2px}
   input{
-    flex:1 1 auto;min-width:0;height:46px;padding:0 44px 0 13px;border-radius:12px;
+    grid-area:2/1;width:100%;min-width:0;height:44px;padding:0 12px;border-radius:12px;
     border:1px solid var(--line);background:var(--field);color:var(--fg);
     font:15px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.4px;
     outline:none;-webkit-appearance:none;
@@ -106,12 +109,11 @@
   input[type=password]{letter-spacing:2px}
   input:focus{border-color:var(--acc)}
   input::placeholder{color:var(--dim);font-family:system-ui,sans-serif;letter-spacing:0}
-  .tkrow .btn{flex:none;width:80px;height:46px}
-  .eye{position:absolute;right:2px;top:2px;width:40px;height:42px;border:0;background:transparent;
-       color:var(--dim);display:flex;align-items:center;justify-content:center;cursor:pointer}
-  .eye .e2{display:none}
-  .eye.on .e1{display:none}
-  .eye.on .e2{display:block}
+  .sbtn{grid-area:2/2;width:70px;height:44px;border-radius:12px;border:1px solid var(--acc);
+        background:var(--acc);color:var(--acc-fg);font:500 14px/1 inherit;font-family:inherit;
+        cursor:pointer;transition:opacity .12s}
+  .sbtn:active{opacity:.82}
+  .sbtn[disabled]{opacity:.35;pointer-events:none}
 
   /* 管理页 */
   .linkbtn{display:flex;align-items:center;gap:11px;width:100%;padding:13px 15px;border:0;
@@ -207,15 +209,17 @@
     </div>
   </section>
 
-  <section class="card tkrow">
-    <span class="tkin">
+  <section class="card sett">
+    <div class="srow">
+      <label class="slbl" for="nm">节点名</label>
+      <input id="nm" type="text" maxlength="31" autocomplete="off" spellcheck="false" placeholder="节点名">
+      <button class="sbtn" id="savenm" type="button">保存</button>
+    </div>
+    <div class="srow">
+      <label class="slbl" for="tk">Token</label>
       <input id="tk" type="password" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="token">
-      <button class="eye" id="eye" type="button" aria-label="显示 token">
-        <svg class="e1" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M2.2 12S5.8 5.6 12 5.6 21.8 12 21.8 12 18.2 18.4 12 18.4 2.2 12 2.2 12z"/><circle cx="12" cy="12" r="3.1"/></svg>
-        <svg class="e2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M2.2 12S5.8 5.6 12 5.6 21.8 12 21.8 12 18.2 18.4 12 18.4 2.2 12 2.2 12z"/><circle cx="12" cy="12" r="3.1"/><path d="M4 4l16 16"/></svg>
-      </button>
-    </span>
-    <button class="btn primary" id="save">保存</button>
+      <button class="sbtn" id="save" type="button">保存</button>
+    </div>
   </section>
 
   <button class="linkbtn" id="mgmt" type="button">
@@ -265,7 +269,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var dot = $('dot'), runText = $('runText'), ver = $('ver'), node = $('node'),
-      meta = $('meta'), logEl = $('log'), tk = $('tk'), busy = $('busy'), autoEl = $('auto'),
+      meta = $('meta'), logEl = $('log'), tk = $('tk'), nm = $('nm'), busy = $('busy'), autoEl = $('auto'),
       logWrap = $('logwrap'), logToggle = $('logtoggle'), preview = $('preview');
 
   var isOn = false, logOpen = false, lastLine = '';
@@ -324,6 +328,11 @@
       'if [ -z "$D" ]; then echo "找不到 o2p 脚本，模块可能没装好或软链断了" >&2; exit 127; fi; ' +
       '/system/bin/sh "$D" ' + sub;
     return sh(probe);
+  }
+
+  // 拼进 shell 命令的字符串一律走单引号，名字里有空格（Xiaomi 14）也不会被拆开
+  function q(s) {
+    return "'" + String(s).replace(/'/g, "'\\''") + "'";
   }
 
   function toast(msg) {
@@ -394,6 +403,8 @@
     node.textContent = s.node || '未命名';
     node.className = 'node' + (s.node ? '' : ' dim');
     node.title = s.node || '';
+    // 改名的输入框跟着配置走；正在输入时别被后台刷新覆盖
+    if (document.activeElement !== nm) { nm.value = s.node || ''; }
 
     setCell('c-lan', s.lan);
     setCell('c-pub4', s.pub4);
@@ -417,7 +428,7 @@
   }
 
   function setLocked(v) {
-    ['save', 'start', 'stop', 'restart', 'reload', 'clear', 'diag', 'export', 'auto'].forEach(function (id) {
+    ['save', 'savenm', 'start', 'stop', 'restart', 'reload', 'clear', 'diag', 'export', 'auto'].forEach(function (id) {
       $(id).disabled = v;
     });
     if (!v) { syncActions(); }
@@ -511,18 +522,18 @@
     $(id).addEventListener('click', function () { copy(this.dataset.v); });
   });
 
-  $('eye').addEventListener('click', function () {
-    var show = tk.type === 'password';
-    tk.type = show ? 'text' : 'password';
-    $('eye').classList.toggle('on', show);
-    tk.focus();
-  });
-
   $('save').addEventListener('click', function () {
     var v = tk.value.trim();
     if (!v) { toast('先填 token'); tk.focus(); return; }
     if (!/^\d+$/.test(v)) { toast('token 是纯数字'); return; }
     act('token ' + v, '保存').then(function () { tk.value = ''; });
+  });
+
+  $('savenm').addEventListener('click', function () {
+    var v = nm.value.trim();
+    if (!v) { toast('先填节点名'); nm.focus(); return; }
+    if (v === (node.textContent || '')) { toast('节点名没有变化'); return; }
+    act('node ' + q(v), '改名中').then(function () { nm.blur(); });
   });
 
   $('start').addEventListener('click', function () { act('start', '启动中'); });
