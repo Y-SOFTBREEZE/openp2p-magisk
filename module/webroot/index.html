@@ -7,92 +7,101 @@
 <style>
   :root{
     --bg:#f4f5f7; --card:#ffffff; --fg:#1a1c20; --dim:#6b7280;
-    --line:#e5e7eb; --field:#f9fafb;
+    --line:#e5e7eb; --field:#f7f8fa;
     --acc:#4f6ef7; --acc-fg:#ffffff;
-    --on:#22c55e; --off:#9ca3af;
+    --on:#22c55e; --off:#b6bac1;
     --code-bg:#f6f7f9; --code-fg:#31343a;
-    --warn:#f59e0b;
+    --warn:#d97706;
   }
   @media (prefers-color-scheme: dark){
     :root{
       --bg:#0f1012; --card:#1a1c20; --fg:#e8eaed; --dim:#9aa0a6;
       --line:#2a2d33; --field:#14161a;
       --acc:#5b78ff; --acc-fg:#ffffff;
-      --on:#34d399; --off:#5f6368;
+      --on:#34d399; --off:#4b5058;
       --code-bg:#0b0c0e; --code-fg:#c8ccd2;
       --warn:#fbbf24;
     }
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{
-    margin:0; padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+    margin:0; padding:calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
     background:var(--bg); color:var(--fg);
     font:15px/1.5 system-ui,-apple-system,"Segoe UI","Noto Sans SC",sans-serif;
   }
   .wrap{max-width:560px;margin:0 auto}
 
-  header{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 14px}
-  h1{margin:0;font-size:20px;font-weight:650;letter-spacing:.2px}
+  header{display:flex;align-items:baseline;justify-content:space-between;margin:0 4px 14px}
+  h1{margin:0;font-size:19px;font-weight:650;letter-spacing:.2px}
   .ver{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
 
   .card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px;
         box-shadow:0 1px 2px rgba(0,0,0,.05),0 1px 8px rgba(0,0,0,.03)}
 
-  .stat{display:flex;align-items:center;margin-bottom:14px}
-  .dot{width:10px;height:10px;border-radius:50%;background:var(--off);margin-right:9px;flex:none}
+  .top{display:flex;align-items:center;justify-content:space-between}
+  .state{display:flex;align-items:center;min-width:0}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--off);margin-right:9px;flex:none}
   .dot.on{background:var(--on);box-shadow:0 0 0 4px color-mix(in srgb,var(--on) 18%,transparent)}
-  .stat b{font-size:16px;font-weight:600}
-  .stat span{font-size:12px;color:var(--dim);margin-left:8px}
+  .state b{font-size:15px;font-weight:600}
+  .auto{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
 
-  .rows{border-top:1px solid var(--line);padding-top:12px}
-  .row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px}
-  .row .k{color:var(--dim);flex:none;margin-right:12px}
-  .row .v{text-align:right;word-break:break-all;min-width:0;font-variant-numeric:tabular-nums}
-  .row.mid{align-items:center}
-  .v.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
-  .v.warn{color:var(--warn)}
-
-  .sw{position:relative;display:inline-block;width:46px;height:26px;flex:none}
+  .sw{position:relative;display:inline-block;width:44px;height:25px;flex:none}
   .sw input{position:absolute;width:0;height:0;opacity:0}
   .sw i{position:absolute;inset:0;background:var(--off);border-radius:999px;transition:background .18s}
-  .sw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;
+  .sw i::after{content:"";position:absolute;left:3px;top:3px;width:19px;height:19px;border-radius:50%;
                background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
   .sw input:checked + i{background:var(--on)}
-  .sw input:checked + i::after{transform:translateX(20px)}
+  .sw input:checked + i::after{transform:translateX(19px)}
   .sw input:disabled + i{opacity:.45}
 
-  label{display:block;font-size:12px;color:var(--dim);margin-bottom:7px}
+  .node{margin:10px 0 3px;font-size:17px;font-weight:600;letter-spacing:.2px;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .node.dim{color:var(--dim);font-weight:500}
+  .meta{display:flex;align-items:center;font-size:12.5px;color:var(--dim);
+        font-variant-numeric:tabular-nums;letter-spacing:.2px}
+  .meta .sep{margin:0 7px;opacity:.6}
+  .meta .warn{color:var(--warn)}
+
+  .btns{display:flex;gap:8px;margin-top:14px}
+  .btn{
+    flex:1 1 0;min-width:0;height:42px;padding:0 10px;
+    border-radius:11px;border:1px solid var(--line);background:var(--field);color:var(--fg);
+    font-size:14px;font-weight:500;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:5px;
+    transition:opacity .15s,transform .06s;font-family:inherit;
+  }
+  .btn:active{transform:scale(.985)}
+  .btn[disabled]{opacity:.4;pointer-events:none}
+  .btn.primary{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+
+  .tokenrow{display:flex;gap:8px}
   input{
-    width:100%;height:46px;padding:0 13px;border-radius:12px;
+    flex:1 1 auto;min-width:0;height:46px;padding:0 13px;border-radius:12px;
     border:1px solid var(--line);background:var(--field);color:var(--fg);
     font:15px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.4px;
     outline:none;-webkit-appearance:none;
   }
   input:focus{border-color:var(--acc)}
   input::placeholder{color:var(--dim);font-family:system-ui,sans-serif;letter-spacing:0}
+  .tokenrow .btn{flex:none;width:80px;height:46px}
 
-  .btns{display:flex;flex-wrap:wrap;margin:12px -5px -10px}
-  .btn{
-    flex:1 1 0;min-width:88px;height:44px;margin:0 5px 10px;padding:0 12px;
-    border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--fg);
-    font-size:14px;font-weight:500;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    transition:opacity .15s,transform .06s;
-  }
-  .btn:active{transform:scale(.98)}
-  .btn[disabled]{opacity:.45;pointer-events:none}
-  .btn.primary{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
-  .btn.wide{flex:1 1 100%}
-
-  .hint{font-size:12px;color:var(--dim);margin:10px 2px 0;line-height:1.6}
-
-  .loghead{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
-  .loghead h2{margin:0;font-size:13px;font-weight:600;color:var(--dim)}
-  .mini{border:0;background:transparent;color:var(--acc);font-size:13px;padding:4px 6px;cursor:pointer}
+  .list{padding:2px 16px}
+  .rowbtn{display:flex;align-items:center;justify-content:space-between;width:100%;height:52px;
+          padding:0;border:0;background:none;color:var(--fg);
+          font:500 14.5px/1 inherit;font-family:inherit;cursor:pointer}
+  .rowbtn + .rowbtn{border-top:1px solid var(--line)}
+  .rowbtn .chev{color:var(--dim);font-size:15px;line-height:1;display:inline-block;
+                transition:transform .15s}
+  .rowbtn[aria-expanded="true"] .chev{transform:rotate(90deg)}
+  .logwrap{padding:0 0 14px}
+  .tools{display:flex;gap:2px;margin:-2px -6px 8px}
+  .mini{border:0;background:transparent;color:var(--acc);font:13px/1 inherit;font-family:inherit;
+        padding:6px;cursor:pointer}
+  .mini[disabled]{opacity:.4;pointer-events:none}
   pre{
-    margin:0;padding:12px;border-radius:12px;background:var(--code-bg);color:var(--code-fg);
+    margin:0;padding:12px;border-radius:11px;background:var(--code-bg);color:var(--code-fg);
     font:11.5px/1.55 ui-monospace,Menlo,Consolas,monospace;
-    max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all;
+    max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-all;
   }
   pre.empty{color:var(--dim)}
 
@@ -109,56 +118,46 @@
     <span class="ver" id="ver"></span>
   </header>
 
-  <div class="card">
-    <div class="stat">
-      <i class="dot" id="dot"></i>
-      <b id="runText">读取中</b>
-      <span id="rules"></span>
-    </div>
-    <div class="rows">
-      <div class="row"><span class="k">节点名</span><span class="v mono" id="node">—</span></div>
-      <div class="row"><span class="k">Token</span><span class="v mono" id="token">—</span></div>
-      <div class="row"><span class="k">共享带宽</span><span class="v" id="sb">—</span></div>
-      <div class="row"><span class="k">进程号</span><span class="v mono" id="pid">—</span></div>
-      <div class="row mid"><span class="k">开机自启</span>
+  <section class="card">
+    <div class="top">
+      <div class="state"><i class="dot" id="dot"></i><b id="runText">读取中</b></div>
+      <div class="auto">开机自启
         <label class="sw"><input type="checkbox" id="auto"><i></i></label>
       </div>
     </div>
-  </div>
-
-  <div class="card">
-    <label for="tk">Token（控制台「我的」页面里的数字）</label>
-    <input id="tk" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
-           placeholder="粘贴 token，留空则不修改">
-    <div class="btns">
-      <button class="btn primary wide" id="save">保存并启动</button>
+    <div class="node dim" id="node">—</div>
+    <div class="meta">
+      <span id="token">—</span>
+      <span class="sep" id="sep" hidden>·</span>
+      <span id="sb"></span>
     </div>
     <div class="btns">
       <button class="btn" id="start">启动</button>
       <button class="btn" id="stop">停止</button>
       <button class="btn" id="restart">重启</button>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <div class="btns" style="margin:0 -5px -10px">
-      <button class="btn primary" id="mgmt">打开管理页</button>
-      <button class="btn" id="refresh">刷新状态</button>
-    </div>
-    <p class="hint">转发规则在 console.openp2p.cn 网页端按节点配置，客户端登录后自动下发。修改节点名要用命令行：<code>su -c o2p node &lt;名字&gt;</code></p>
-  </div>
+  <section class="card tokenrow">
+    <input id="tk" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="token">
+    <button class="btn primary" id="save">保存</button>
+  </section>
 
-  <div class="card">
-    <div class="loghead">
-      <h2>运行日志</h2>
-      <span>
+  <section class="card list">
+    <button class="rowbtn" id="mgmt"><span>管理页</span><span class="chev">↗</span></button>
+    <button class="rowbtn" id="logtoggle" aria-expanded="false" aria-controls="logwrap">
+      <span>运行日志</span><span class="chev">›</span>
+    </button>
+    <div class="logwrap" id="logwrap" hidden>
+      <div class="tools">
+        <button class="mini" id="reload">刷新</button>
+        <button class="mini" id="clear">清空</button>
         <button class="mini" id="diag">诊断</button>
         <button class="mini" id="export">导出</button>
-        <button class="mini" id="reload">刷新</button>
-      </span>
+      </div>
+      <pre id="log" class="empty"></pre>
     </div>
-    <pre id="log" class="empty">点「刷新」读取</pre>
-  </div>
+  </section>
 </div>
 
 <div class="busy" id="busy"></div>
@@ -179,8 +178,11 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var dot = $('dot'), runText = $('runText'), ver = $('ver'), node = $('node'),
-      token = $('token'), sb = $('sb'), pid = $('pid'), rules = $('rules'),
-      logEl = $('log'), tk = $('tk'), busy = $('busy'), autoEl = $('auto');
+      token = $('token'), sep = $('sep'), sb = $('sb'), logEl = $('log'),
+      tk = $('tk'), busy = $('busy'), autoEl = $('auto'),
+      logWrap = $('logwrap'), logToggle = $('logtoggle');
+
+  var isOn = false, logOpen = false;
 
   function hasKsu() {
     return typeof window.ksu !== 'undefined' && typeof window.ksu.exec === 'function';
@@ -260,19 +262,39 @@
   }
 
   function render(s) {
-    var on = s.run === '1';
-    dot.className = 'dot' + (on ? ' on' : '');
-    runText.textContent = on ? '运行中' : '未运行';
+    isOn = s.run === '1';
+    dot.className = 'dot' + (isOn ? ' on' : '');
+    runText.textContent = isOn ? '运行中' : '未运行';
     ver.textContent = s.ver ? 'v' + s.ver : '';
-    node.textContent = s.node || '未生成';
+
+    node.textContent = s.node || '未命名';
+    node.className = 'node' + (s.node ? '' : ' dim');
+    node.title = s.node || '';
+
     var t = s.token || '';
     var unset = !t || t === '0';
-    token.textContent = unset ? '未配置' : (s.token_masked || t);
-    token.className = 'v mono' + (unset ? ' warn' : '');
-    sb.textContent = (s.sb ? s.sb : '—') + (s.sb ? ' Mbps' : '');
-    pid.textContent = s.pid || '—';
+    token.textContent = unset ? 'token 未配置' : 'token ' + (s.token_masked || t);
+    token.className = unset ? 'warn' : '';
+
+    sb.textContent = s.sb ? '共享 ' + s.sb + ' Mbps' : '';
+    sep.hidden = !s.sb;
+
     autoEl.checked = s.autostart !== '0';
-    rules.textContent = (s.rules || '0') + ' 条本地规则';
+    syncActions();
+  }
+
+  // 当前状态做不了的动作置灰，不用文字解释
+  function syncActions() {
+    if (running) { return; }
+    $('start').disabled = isOn;
+    $('stop').disabled = !isOn;
+  }
+
+  function setLocked(v) {
+    ['save', 'start', 'stop', 'restart', 'reload', 'clear', 'diag', 'export', 'auto'].forEach(function (id) {
+      $(id).disabled = v;
+    });
+    if (!v) { syncActions(); }
   }
 
   var loading = false;
@@ -282,12 +304,14 @@
     return o2p('state').then(function (r) {
       loading = false;
       if (r.code !== 0) {
+        isOn = false;
         runText.textContent = '读取失败';
-        rules.textContent = '';
+        syncActions();
         var why = ((r.out || '') + '\n' + (r.err || '')).replace(/\r/g, '').trim();
         // 状态读不出来时顺手探一下环境，省得来回猜
         return sh(PROBE).then(function (p) {
           var extra = ((p.out || '') + (p.err || '')).replace(/\r/g, '').trim();
+          openLog();
           logEl.className = '';
           logEl.textContent = '状态读取失败（退出码 ' + r.code + '）\n' +
             (why ? why + '\n\n' : '') + '—— 环境探测 ——\n' + (extra || '（探测器也没有输出，可能 root 权限没给到 WebUI）');
@@ -305,67 +329,82 @@
     return o2p('log 200').then(function (r) {
       var text = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
       logEl.className = text ? '' : 'empty';
-      logEl.textContent = text || '还没有日志，服务启动后这里会出现输出';
+      logEl.textContent = text || '暂无日志';
       logEl.scrollTop = logEl.scrollHeight;
     });
   }
 
+  function openLog() {
+    logOpen = true;
+    logWrap.hidden = false;
+    logToggle.setAttribute('aria-expanded', 'true');
+  }
+
+  function toggleLog() {
+    logOpen = !logOpen;
+    logWrap.hidden = !logOpen;
+    logToggle.setAttribute('aria-expanded', logOpen ? 'true' : 'false');
+    if (logOpen) { loadLog(); }
+  }
+
   var running = false;
+  // 每步操作后刷状态；日志开着就跟着刷，关着就不打扰
   function act(sub, label) {
     if (running) { return Promise.resolve(); }
     running = true;
-    setDisabled(true);
-    showBusy(label + '…');
+    setLocked(true);
+    showBusy(label);
     return o2p(sub).then(function (r) {
       var out = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
       return refresh().then(function () {
         running = false;
-        setDisabled(false);
+        setLocked(false);
         showBusy('');
-        var msg = out.split('\n').pop() || (r.code === 0 ? '完成' : '失败（退出码 ' + r.code + '）');
-        toast(label + '：' + msg);
-        if (r.code === 0) { return loadLog(); }
-        logEl.className = out ? '' : 'empty';
-        logEl.textContent = out || label + '失败（退出码 ' + r.code + '，没有输出）';
+        if (r.code === 0) {
+          toast(out.split('\n').pop() || label + '完成');
+          if (logOpen) { loadLog(); }
+          return;
+        }
+        openLog();
+        logEl.className = '';
+        logEl.textContent = out || (label + '失败（退出码 ' + r.code + '）');
       });
     });
   }
 
-  function setDisabled(v) {
-    ['save', 'start', 'stop', 'restart', 'refresh', 'reload', 'diag', 'export', 'auto'].forEach(function (id) {
-      $(id).disabled = v;
-    });
-  }
+  logToggle.addEventListener('click', toggleLog);
 
   $('save').addEventListener('click', function () {
     var v = tk.value.trim();
-    if (!v) { toast('先填 token'); return; }
+    if (!v) { toast('先填 token'); tk.focus(); return; }
     if (!/^\d+$/.test(v)) { toast('token 是纯数字'); return; }
-    act('token ' + v, '保存 token').then(function () { tk.value = ''; });
+    act('token ' + v, '保存').then(function () { tk.value = ''; });
   });
 
-  $('start').addEventListener('click', function () { act('start', '启动'); });
-  $('stop').addEventListener('click', function () { act('stop', '停止'); });
-  $('restart').addEventListener('click', function () { act('restart', '重启'); });
-  $('refresh').addEventListener('click', function () { refresh().then(function (ok) { if (ok) { loadLog(); } }); });
+  $('start').addEventListener('click', function () { act('start', '启动中'); });
+  $('stop').addEventListener('click', function () { act('stop', '停止中'); });
+  $('restart').addEventListener('click', function () { act('restart', '重启中'); });
   $('reload').addEventListener('click', loadLog);
 
-  // 开机自启开关：直接切配置文件里的状态，不需要重启
+  // 开机自启：只改标记文件，不需要重启进程
   autoEl.addEventListener('change', function () {
     var on = autoEl.checked;
     if (running) { autoEl.checked = !on; return; }
-    act('autostart ' + (on ? 'on' : 'off'), '开机自启');
+    act('autostart ' + (on ? 'on' : 'off'), '保存设置');
   });
+
+  $('clear').addEventListener('click', function () { act('clearlog', '清空中'); });
 
   // 诊断：环境、进程、DNS、最近日志一次性打出来
   $('diag').addEventListener('click', function () {
     if (running) { return; }
     running = true;
-    setDisabled(true);
-    showBusy('诊断中…');
+    setLocked(true);
+    openLog();
+    showBusy('诊断中');
     o2p('diag').then(function (r) {
       running = false;
-      setDisabled(false);
+      setLocked(false);
       showBusy('');
       var text = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
       logEl.className = text ? '' : 'empty';
@@ -378,15 +417,15 @@
   $('export').addEventListener('click', function () {
     if (running) { return; }
     running = true;
-    setDisabled(true);
-    showBusy('导出中…');
+    setLocked(true);
+    openLog();
+    showBusy('导出中');
     o2p('export').then(function (r) {
       running = false;
-      setDisabled(false);
+      setLocked(false);
       showBusy('');
       var text = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
-      var line = text.split('\n').pop();
-      toast(line || ('导出失败（退出码 ' + r.code + '）'));
+      toast(text.split('\n').pop() || ('导出失败（退出码 ' + r.code + '）'));
       logEl.className = text ? '' : 'empty';
       logEl.textContent = text || '导出没有输出（退出码 ' + r.code + '）';
       logEl.scrollTop = 0;
@@ -406,7 +445,12 @@
     });
   });
 
-  refresh().then(function (ok) { if (ok) { loadLog(); } });
+  // 从别的应用切回来时刷一次，代替一个「刷新」按钮
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') { refresh(); }
+  });
+
+  refresh();
 })();
 </script>
 </body>

@@ -33,7 +33,7 @@ while [ "$(getprop sys.boot_completed)" != "1" ] && [ "$i" -lt 180 ]; do
     i=$((i + 1))
 done
 
-# 节点名为空时生成 android-xxxxxx，否则客户端会用 localhost，多台设备撞名
+# 节点名为空时按机型命名（Xiaomi 14），否则客户端会用 localhost，多台设备撞名
 [ -x "$DATA/o2p" ] && "$DATA/o2p" ensure-node >/dev/null 2>&1
 
 # 用户把「开机自启」关了

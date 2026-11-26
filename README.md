@@ -6,14 +6,12 @@
 
 模块带 WebUI。KernelSU 管理器里进入 模块 → OpenP2P → 「打开」，就是这个界面：
 
-- 运行状态、版本、节点名、token（打码）、本地规则条数
-- token 输入框，填完点「保存并启动」
-- 启动 / 停止 / 重启
-- **开机自启开关**：关掉后重启不自动拉起，当前这次开机内继续跑
-- 一键打开 console.openp2p.cn 管理页（跳系统浏览器）
-- 运行日志，可刷新；**「诊断」**打印环境/进程/DNS，**「导出」**把诊断包写到 `Download/openp2p-<时间>.txt`
+- 状态、机型名、token（打码）、共享带宽；右上角是**开机自启开关**（默认开）
+- 启动 / 停止 / 重启，当前状态下用不了的那个自动置灰
+- token 一个输入框加一个「保存」
+- 「管理页」跳系统浏览器打开 console.openp2p.cn，「运行日志」默认折叠，展开后有刷新 / 清空 / 诊断 / 导出
 
-模块列表里那一行描述会跟着状态变：`[运行中] android-a1b2c3 · v3.25.14`、`[已停止]`、`[未配置 Token]`，不用点进去也知道跑没跑。
+模块列表里那一行描述会跟着状态变：`[运行中] Xiaomi 14 · v3.25.14`、`[已停止]`、`[未配置 Token]`，不用点进去也知道跑没跑。
 
 **入口依赖管理器版本。** KernelSU 官方管理器要较新的版本才认模块里的 `webroot`（模块页出现「打开」按钮就是支持）。Magisk 官方 App 没有 WebUI，需要装 [MMRL](https://github.com/MMRLApp/MMRL) 或 KsuWebUIStandalone 才能打开同一个页面。
 
@@ -50,7 +48,7 @@ su -c o2p token 14970667620017705323
 su -c o2p status
 ```
 
-首次开机模块会生成 `android-xxxxxx` 作为节点名，出现在控制台的设备列表里。要换就 `su -c o2p node <8-31 个字符>`。
+节点名自动取机型名（`ro.product.marketname`，例如 `Xiaomi 14`），它就是控制台设备列表里显示的名字。同一型号两台设备会撞名，改成 `su -c o2p node <8-31 个字符>` 换一个即可。
 
 ## 命令
 
@@ -62,6 +60,7 @@ su -c o2p status
 | `o2p start` / `o2p stop` / `o2p restart` | 手动控制 |
 | `o2p autostart on` / `off` | 开机自启开关（界面里也有同一个开关） |
 | `o2p log [行数]` | 看日志，默认 60 行 |
+| `o2p clearlog` | 清空两份日志（客户端 + 守护） |
 | `o2p diag` | 环境、进程、DNS、最近日志，一眼看出卡在哪 |
 | `o2p export` | 诊断包写到 `Download/openp2p-<时间>.txt`，可直接发给别人看 |
 | `o2p config` | 打印 config.json |
@@ -120,7 +119,7 @@ su -c o2p status      # 进程 : 运行中 (pid …)
 
 **配置不在模块目录。** `core.Run()` 一进来就 `os.Chdir(filepath.Dir(os.Args[0]))`，配置跟着二进制走。模块升级会替换整个模块目录，所以二进制留在模块里，配置放在 `/data/adb/openp2p`，靠软链让 chdir 落到配置目录。
 
-**节点名要自己给。** `core/common.go` 的 `defaultNodeName()` 用 `os.Hostname()`，Android 上这个值固定是 `localhost`，几台设备刷同一个模块就会撞名。模块首次启动时生成 `android-<6 位随机>` 写进配置。
+**节点名要自己给。** `core/common.go` 的 `defaultNodeName()` 用 `os.Hostname()`，Android 上这个值固定是 `localhost`，几台设备刷同一个模块就会撞名。模块按 `ro.product.marketname` → `ro.product.model` → `ro.product.device` 的顺序取机型名写进配置，空着或还是老版本生成的 `android-xxxxxx` 才改；名字会被清洗成 `[A-Za-z0-9 ._+-]`（要塞进 JSON 和 sed 替换串，引号、`&` 会破坏配置），不足 8 字符补随机后缀，超 31 字符截断。
 
 **从 WebUI 启动的进程不能挂在管理器 shell 上。** `ksu.exec` 每执行一次开一个 root shell，命令返回就关。所以启动走 `nohup sh daemon.sh &`，让守护循环脱离那个 shell，关掉管理器也不会掉线。
 

@@ -170,16 +170,49 @@ state() {
     echo "daemon=$(daemon_pid || echo '')"
 }
 
+# 机型名：ro.product.marketname 是厂商公开叫法（Xiaomi 14），
+# model 常常是型号代码（23127PN0CC），device 是代号（houji），依次退。
+device_name() {
+    for k in ro.product.marketname ro.product.model ro.product.device; do
+        v=$(getprop "$k" 2>/dev/null)
+        [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+    done
+}
+
 ensure_node() {
-    # 客户端默认拿 os.Hostname() 当节点名，Android 上固定是 localhost，必须自己生成一个
-    [ -n "$(field Node)" ] && return 0
-    r=$(od -An -N3 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
-    [ -z "$r" ] && r=$(date +%s | tail -c 7)
-    name="android-$r"
+    # 客户端默认拿 os.Hostname() 当节点名，Android 上固定是 localhost，多台设备直接撞名。
+    # 已有名字就保留；空着、或还是老版本生成的 android-xxxxxx，改成机型名。
+    cur=$(field Node)
+    if [ -n "$cur" ] && ! printf '%s' "$cur" | grep -Eq '^android-[0-9a-f]{4,8}$'; then
+        return 0
+    fi
+
+    # 只留字母数字和 . _ + - 和空格：名字要塞进 JSON 和 sed 替换串，引号、& / \ 会破坏配置
+    name=$(device_name | sed 's/[^A-Za-z0-9 ._+-]/-/g; s/--*/-/g; s/  */ /g; s/ - /-/g; s/--*/-/g; s/^[ .-]*//; s/[ .-]*$//')
+    [ -n "$name" ] || name="android"
+    name=$(printf '%s' "$name" | head -c 31 | sed 's/[ .-]*$//')
+    [ "$(printf '%s' "$name" | wc -c)" -ge 8 ] || {
+        r=$(od -An -N2 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+        [ -z "$r" ] && r=$(date +%s | tail -c 5)
+        name="$name-$r"
+    }
+
     if grep -q '"Node"' "$CFG"; then
         sed -i "s/\"Node\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"Node\": \"$name\"/" "$CFG"
     fi
     echo "$name"
+}
+
+# 清空日志：客户端和守护都以 O_APPEND 打开，截断后下一行从文件头继续写，安全
+clear_log() {
+    n=0
+    for f in "$DATA"/log/openp2p.log "$DATA"/log/service.log; do
+        [ -f "$f" ] || continue
+        : > "$f"
+        n=$((n + 1))
+    done
+    [ "$n" = 0 ] && { echo "还没有日志文件"; return 1; }
+    echo "已清空 $n 个日志文件"
 }
 
 set_token() {
@@ -339,10 +372,11 @@ case "${1:-status}" in
     node)       set_node "$2" ;;
     autostart)  set_autostart "$2" ;;
     log)        show_log "$2" ;;
+    clearlog)   clear_log ;;
     export)     do_export ;;
     diag)       diag ;;
     config)     cat "$CFG" ;;
     *)
-        echo "用法: o2p <status|state|start|stop|restart|token <TOKEN>|node <名字>|autostart on|off|log [行数]|export|diag|config>"
+        echo "用法: o2p <status|state|start|stop|restart|token <TOKEN>|node <名字>|autostart on|off|log [行数]|clearlog|export|diag|config>"
         ;;
 esac
