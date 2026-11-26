@@ -45,7 +45,9 @@
 | `o2p log [行数]` | 看日志，默认 30 行 |
 | `o2p config` | 打印 config.json |
 
-模块页的「操作」按钮等同于 `o2p status`。
+模块页的「操作」按钮等同于 `o2p status`。某些 ROM 上 `/system/bin` 被写保护导致 `o2p` 找不到，直接用 `/data/adb/openp2p/o2p status`。
+
+共享带宽默认 10 Mbps（`ShareBandwidth`），只在私有网络用就把 `config.json` 里改成 0，改完 `o2p restart`。
 
 ## 文件位置
 
