@@ -43,6 +43,16 @@ version() {
     echo "${v:-未知}"
 }
 
+# module.prop 里的 version 是「上游版本-r模块修订号」（3.25.14-r5），
+# 界面右上角要的是 openp2p 自己的版本号，修订号我们自己的放在页脚
+app_version() {
+    v=$(version)
+    case "$v" in
+        *-r*) printf '%s' "${v%-r*}" ;;
+        *)    printf '%s' "$v" ;;
+    esac
+}
+
 daemon_path() {
     D=$DATA/daemon.sh
     [ -f "$D" ] || D=/data/adb/modules/openp2p/daemon.sh
@@ -198,7 +208,8 @@ state() {
         echo "run=0"
         echo "pid="
     fi
-    echo "ver=$(version)"
+    echo "ver=$(app_version)"
+    echo "mver=$(version)"
     echo "node=$(field Node)"
     tk=$(field Token)
     echo "token=$tk"

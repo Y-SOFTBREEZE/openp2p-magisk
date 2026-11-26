@@ -100,20 +100,37 @@
         column-gap:9px;row-gap:4px;align-items:end}
   .srow + .srow{margin-top:13px;padding-top:13px;border-top:1px solid var(--line)}
   .slbl{grid-area:1/1;font-size:11.5px;color:var(--dim);letter-spacing:.2px}
+  .tkin{grid-area:2/1;position:relative;display:block;min-width:0}
   input{
     grid-area:2/1;width:100%;min-width:0;height:44px;padding:0 12px;border-radius:12px;
     border:1px solid var(--line);background:var(--field);color:var(--fg);
     font:15px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.4px;
     outline:none;-webkit-appearance:none;
   }
+  #tk{padding-right:42px}
   input[type=password]{letter-spacing:2px}
   input:focus{border-color:var(--acc)}
   input::placeholder{color:var(--dim);font-family:system-ui,sans-serif;letter-spacing:0}
+  /* 小眼睛只在输入框有内容时出现：空着就是在提示「已配置」，没有可看的东西 */
+  .eye{display:none;position:absolute;right:1px;top:1px;width:40px;height:42px;border:0;
+       background:transparent;color:var(--dim);align-items:center;justify-content:center;cursor:pointer}
+  .eye.show{display:flex}
+  .eye .e2{display:none}
+  .eye.on .e1{display:none}
+  .eye.on .e2{display:block}
   .sbtn{grid-area:2/2;width:70px;height:44px;border-radius:12px;border:1px solid var(--acc);
         background:var(--acc);color:var(--acc-fg);font:500 14px/1 inherit;font-family:inherit;
         cursor:pointer;transition:opacity .12s}
   .sbtn:active{opacity:.82}
   .sbtn[disabled]{opacity:.35;pointer-events:none}
+
+  /* 页脚：GitHub 入口 + 我们自己的修订号（上游版本号在右上角） */
+  .ft{display:flex;align-items:center;justify-content:center;gap:9px;
+      margin:2px 0 0;padding-bottom:2px;color:var(--dim);font-size:11.5px;letter-spacing:.2px}
+  .ft .gh{display:flex;align-items:center;justify-content:center;width:28px;height:28px;
+          border:0;border-radius:9px;background:var(--field);color:var(--dim);
+          cursor:pointer;transition:opacity .12s}
+  .ft .gh:active{opacity:.6}
 
   /* 管理页 */
   .linkbtn{display:flex;align-items:center;gap:11px;width:100%;padding:13px 15px;border:0;
@@ -217,7 +234,13 @@
     </div>
     <div class="srow">
       <label class="slbl" for="tk">Token</label>
-      <input id="tk" type="password" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="token">
+      <span class="tkin">
+        <input id="tk" type="password" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="token">
+        <button class="eye" id="eye" type="button" aria-label="显示 token">
+          <svg class="e1" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M2.2 12S5.8 5.6 12 5.6 21.8 12 21.8 12 18.2 18.4 12 18.4 2.2 12 2.2 12z"/><circle cx="12" cy="12" r="3.1"/></svg>
+          <svg class="e2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M2.2 12S5.8 5.6 12 5.6 21.8 12 21.8 12 18.2 18.4 12 18.4 2.2 12 2.2 12z"/><circle cx="12" cy="12" r="3.1"/><path d="M4 4l16 16"/></svg>
+        </button>
+      </span>
       <button class="sbtn" id="save" type="button">保存</button>
     </div>
   </section>
@@ -249,6 +272,13 @@
       <pre id="log" class="empty"></pre>
     </div>
   </section>
+
+  <footer class="ft">
+    <button class="gh" id="gh" type="button" aria-label="GitHub Releases">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    </button>
+    <span id="mver"></span>
+  </footer>
 </div>
 
 <div class="busy" id="busy"></div>
@@ -261,6 +291,7 @@
                    '/data/adb/modules/openp2p/o2p',
                    '/data/adb/modules_update/openp2p/o2p'];
   var MGMT = 'https://console.openp2p.cn';
+  var RELEASES = 'https://github.com/Y-SOFTBREEZE/openp2p-magisk/releases/latest';
   // 状态读失败时用来定位：脚本在不在、进程在不在
   var PROBE = 'for d in ' + O2P_PATHS.join(' ') +
     '; do if [ -e "$d" ]; then echo "存在 $d"; else echo "缺失 $d"; fi; done; ' +
@@ -414,6 +445,9 @@
 
     var set = s.token && s.token !== '0';
     tk.placeholder = set ? 'token 已配置' : 'token';
+    // 右上角是 openp2p 自己的版本号；「-r5」是我们的模块修订号，放页脚
+    $('mver').textContent = s.mver ? '模块 v' + s.mver : '';
+    syncEye();
 
     setPreview(s.last);
     autoEl.checked = s.autostart !== '0';
@@ -522,11 +556,43 @@
     $(id).addEventListener('click', function () { copy(this.dataset.v); });
   });
 
+  // 小眼睛只在有输入内容时露出来；空输入说明「已配置」，没什么可看的
+  function syncEye() {
+    var has = tk.value.length > 0;
+    $('eye').classList.toggle('show', has);
+    if (!has) {
+      tk.type = 'password';
+      $('eye').classList.remove('on');
+    }
+  }
+
+  // 打开外部链接：ksu_download 暴露 openExternal（系统浏览器），老管理器退回 am start
+  function openExt(url) {
+    try {
+      if (window.ksu_download && window.ksu_download.openExternal) {
+        window.ksu_download.openExternal(url);
+        return;
+      }
+    } catch (e) {}
+    sh('/system/bin/am start --user 0 -a android.intent.action.VIEW -d "' + url + '"').then(function (r) {
+      if (r.code !== 0) { toast('打不开浏览器：' + (r.err || r.out || r.code)); }
+    });
+  }
+
+  $('eye').addEventListener('click', function () {
+    var show = tk.type === 'password';
+    tk.type = show ? 'text' : 'password';
+    $('eye').classList.toggle('on', show);
+    tk.focus();
+  });
+
+  tk.addEventListener('input', syncEye);
+
   $('save').addEventListener('click', function () {
     var v = tk.value.trim();
     if (!v) { toast('先填 token'); tk.focus(); return; }
     if (!/^\d+$/.test(v)) { toast('token 是纯数字'); return; }
-    act('token ' + v, '保存').then(function () { tk.value = ''; });
+    act('token ' + v, '保存').then(function () { tk.value = ''; syncEye(); });
   });
 
   $('savenm').addEventListener('click', function () {
@@ -587,18 +653,8 @@
     });
   });
 
-  $('mgmt').addEventListener('click', function () {
-    // ksu_download 暴露 openExternal（系统浏览器打开）；老版本管理器退回 am start
-    try {
-      if (window.ksu_download && window.ksu_download.openExternal) {
-        window.ksu_download.openExternal(MGMT);
-        return;
-      }
-    } catch (e) {}
-    sh('/system/bin/am start --user 0 -a android.intent.action.VIEW -d "' + MGMT + '"').then(function (r) {
-      if (r.code !== 0) { toast('打不开浏览器：' + (r.err || r.out || r.code)); }
-    });
-  });
+  $('mgmt').addEventListener('click', function () { openExt(MGMT); });
+  $('gh').addEventListener('click', function () { openExt(RELEASES); });
 
   // 从别的应用切回来时刷一次，代替一个「刷新」按钮
   document.addEventListener('visibilitychange', function () {
