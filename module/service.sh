@@ -24,6 +24,9 @@ while [ "$(getprop sys.boot_completed)" != "1" ] && [ $i -lt 180 ]; do
     i=$((i + 1))
 done
 
+# 节点名为空时生成 android-xxxxxx，否则客户端会用 localhost，多台设备撞名
+[ -x "$DATA/o2p" ] && "$DATA/o2p" ensure-node >/dev/null 2>&1
+
 # 没配 token 就不启动，避免无意义的重试把日志刷满
 token=$(sed -n 's/.*"Token"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CFG" 2>/dev/null | head -n1)
 if [ -z "$token" ] || [ "$token" = "0" ]; then

@@ -31,6 +31,9 @@ chown -R 0:0 "$DATA"
 chmod 700 "$DATA"
 chmod 600 "$DATA/config.json"
 
+"$DATA/o2p" ensure-node >/dev/null 2>&1
+ui_print "- 节点名：$(sed -n 's/.*"Node"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DATA/config.json")"
+
 VER=$(sed -n 's/^version=//p' "$MODPATH/module.prop")
 ui_print "- 版本 $VER"
 

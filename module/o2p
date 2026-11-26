@@ -65,6 +65,18 @@ status() {
     echo "本地规则 : ${apps:-0} 条（控制台下发的规则不写进配置文件）"
 }
 
+ensure_node() {
+    # 客户端默认拿 os.Hostname() 当节点名，Android 上固定是 localhost，必须自己生成一个
+    [ -n "$(field Node)" ] && return 0
+    r=$(od -An -N3 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+    [ -z "$r" ] && r=$(date +%s | tail -c 7)
+    name="android-$r"
+    if grep -q '"Node"' "$CFG"; then
+        sed -i "s/\"Node\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"Node\": \"$name\"/" "$CFG"
+    fi
+    echo "$name"
+}
+
 set_token() {
     case "$1" in
         ''|*[!0-9]*) echo "token 必须是纯数字，从 console.openp2p.cn 的「我的」页面复制"; return 1 ;;
@@ -119,6 +131,7 @@ case "${1:-status}" in
     stop)    stop ;;
     restart) stop; sleep 1; start ;;
     token)   set_token "$2" ;;
+    ensure-node) ensure_node ;;   # 内部用：节点名为空时生成一个
     node)    set_node "$2" ;;
     log)     show_log "$2" ;;
     config)  cat "$CFG" ;;

@@ -32,7 +32,7 @@
    su -c o2p status
    ```
 
-节点名第一次登录时由服务器分配，会出现在控制台的设备列表里。想固定下来就 `su -c o2p node <8-31 个字符>`。
+首次开机模块会生成 `android-xxxxxx` 作为节点名，出现在控制台的设备列表里。要换就 `su -c o2p node <8-31 个字符>`。
 
 ## 命令
 
@@ -55,13 +55,15 @@
 /data/adb/openp2p/log/          openp2p.log（客户端日志）、service.log（守护进程日志）
 ```
 
-## 两个实现上的坑
+## 三个实现上的坑
 
 **DNS。** 这个二进制用 Go 内置解析器（`CGO_ENABLED=0`），读 `/etc/resolv.conf`。Android 上没有这个文件，官方 App 能上网是因为 gomobile 编译时开了 cgo，走 bionic。模块通过 overlay 提供 `system/etc/resolv.conf`（223.5.5.5 / 119.29.29.29 / 114.114.114.114）。所在网络这几个 DNS 不通，就改模块目录里这个文件再重启。
 
 **不用 `-d`。** 官方 daemon 模式依赖 `openp2p-cn/service` 注册系统服务，Android 没有 systemd，跑起来是空转。所以用模块自带的一个 `while` 循环守护。
 
 **配置不在模块目录。** `core.Run()` 一进来就 `os.Chdir(filepath.Dir(os.Args[0]))`，配置跟着二进制走。模块升级会替换整个模块目录，所以二进制留在模块里，配置放在 `/data/adb/openp2p`，靠软链让 chdir 落到配置目录。
+
+**节点名要自己给。** `core/common.go` 的 `defaultNodeName()` 用 `os.Hostname()`，Android 上这个值固定是 `localhost`，几台设备刷同一个模块就会撞名。模块首次启动时生成 `android-<6 位随机>` 写进配置。
 
 ## 自动构建
 
