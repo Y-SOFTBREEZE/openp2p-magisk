@@ -229,10 +229,12 @@
 
   // /data/adb/openp2p/o2p 是指向模块目录的软链，安装后若指向 modules_update，
   // 重启后那条路径就没了（断链）。所以逐个探测，挑第一个真实存在的。
+  // 用变量 + 普通调用，不用 exec：有些管理器的 shell 在 for 里 exec 之后行为不一致
   function o2p(sub) {
-    var probe = 'for d in ' + O2P_PATHS.join(' ') +
-      '; do [ -f "$d" ] && exec /system/bin/sh "$d" ' + sub + '; done; ' +
-      'echo "找不到 o2p 脚本，模块可能没装好或软链断了" >&2; exit 127';
+    var probe = 'D=; for d in ' + O2P_PATHS.join(' ') +
+      '; do if [ -f "$d" ]; then D="$d"; break; fi; done; ' +
+      'if [ -z "$D" ]; then echo "找不到 o2p 脚本，模块可能没装好或软链断了" >&2; exit 127; fi; ' +
+      '/system/bin/sh "$D" ' + sub;
     return sh(probe);
   }
 
