@@ -86,7 +86,8 @@ jobs:
 
           **安装**：Magisk / KernelSU 里刷入 zip，重启。
 
-          **配置**（不需要装官方 App）：
+          **配置**：模块页点「打开」进图形界面，填 token、启停、看日志、跳管理页；命令行等价：
+
           \`\`\`
           su -c o2p token <控制台里的 TOKEN>
           su -c o2p status

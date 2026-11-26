@@ -14,11 +14,12 @@ ui_print "- 准备数据目录 $DATA"
 mkdir -p "$DATA/log" "$DATA/run"
 
 chmod 755 "$MODPATH/bin/openp2p"
-chmod 755 "$MODPATH/o2p" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/uninstall.sh"
+chmod 755 "$MODPATH/o2p" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/uninstall.sh" "$MODPATH/daemon.sh"
 chmod 755 "$MODPATH/system/bin/o2p"
 
 ln -sf "$MODPATH/bin/openp2p" "$DATA/openp2p"
 ln -sf "$MODPATH/o2p" "$DATA/o2p"
+ln -sf "$MODPATH/daemon.sh" "$DATA/daemon.sh"
 
 if [ -f "$DATA/config.json" ]; then
     ui_print "- 保留已有配置 $DATA/config.json"
@@ -39,7 +40,7 @@ ui_print "- 版本 $VER"
 
 if [ "$(sed -n 's/.*"Token"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$DATA/config.json" | head -n1)" = "0" ] || \
    [ -z "$(sed -n 's/.*"Token"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$DATA/config.json" | head -n1)" ]; then
-    ui_print "- 还没配置 token，安装后执行："
-    ui_print "    su -c o2p token <控制台里的 TOKEN>"
+    ui_print "- 还没配置 token，进 KernelSU 模块页点「打开」填"
+    ui_print "  （或命令行： su -c o2p token <控制台里的 TOKEN>）"
 fi
 ui_print "- 重启后自动启动，规则在 console.openp2p.cn 上配置"

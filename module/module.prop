@@ -3,4 +3,4 @@ name=OpenP2P 无 App 客户端
 version=0.0.0
 versionCode=0
 author=Y-SOFTBREEZE
-description=把 OpenP2P 官方 Android arm64 客户端做成开机自启的 root 模块。配置文件 /data/adb/openp2p/config.json，控制命令 o2p。支持端口转发/内网穿透，不支持 SD-WAN 组网（TUN）。
+description=把 OpenP2P 官方 Android arm64 客户端做成开机自启的 root 模块，带配置界面。模块页点「打开」即可填 token、启停、看日志、跳管理页；命令行 o2p。支持端口转发/内网穿透，不支持 SD-WAN 组网（TUN）。
