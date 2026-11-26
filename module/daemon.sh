@@ -15,6 +15,8 @@ echo $$ > "$PIDF"
 
 while [ ! -f "$STOPF" ]; do
     cd "$DATA" || exit 1
+    # 软链没建好就别空转刷日志（正常情况下 service.sh 会先修好）
+    [ -x ./openp2p ] || { echo "$(date '+%F %T') 找不到 openp2p 二进制，守护退出" >> "$SUPLOG"; exit 1; }
     ./openp2p -nv >> "$SUPLOG" 2>&1
     [ -f "$STOPF" ] && break
     echo "$(date '+%F %T') openp2p 退出，20 秒后拉起" >> "$SUPLOG"

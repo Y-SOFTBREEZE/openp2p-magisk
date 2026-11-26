@@ -1,3 +1,9 @@
 #!/system/bin/sh
-# 让 o2p 出现在 PATH 里，直接 su -c o2p 即可
-exec /data/adb/openp2p/o2p "$@"
+# 让 o2p 出现在 PATH 里，直接 su -c o2p 即可。
+# /data/adb/openp2p/o2p 是指向模块目录的软链，安装后重启前可能断掉（指向 modules_update），
+# 所以逐个探测真实路径，软链坏了也能用。
+for d in /data/adb/openp2p/o2p /data/adb/modules/openp2p/o2p /data/adb/modules_update/openp2p/o2p; do
+    [ -f "$d" ] && exec /system/bin/sh "$d" "$@"
+done
+echo "找不到 o2p 脚本，模块可能没装好" >&2
+exit 127

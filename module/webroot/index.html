@@ -150,7 +150,9 @@
 (function () {
   'use strict';
 
-  var O2P = '/data/adb/openp2p/o2p';
+  var O2P_PATHS = ['/data/adb/openp2p/o2p',
+                   '/data/adb/modules/openp2p/o2p',
+                   '/data/adb/modules_update/openp2p/o2p'];
   var MGMT = 'https://console.openp2p.cn';
   var seq = 0;
 
@@ -199,6 +201,15 @@
     });
   }
 
+  // /data/adb/openp2p/o2p 是指向模块目录的软链，安装后若指向 modules_update，
+  // 重启后那条路径就没了（断链）。所以逐个探测，挑第一个真实存在的。
+  function o2p(sub) {
+    var probe = 'for d in ' + O2P_PATHS.join(' ') +
+      '; do [ -f "$d" ] && exec /system/bin/sh "$d" ' + sub + '; done; ' +
+      'echo "找不到 o2p 脚本，模块可能没装好或软链断了" >&2; exit 127';
+    return sh(probe);
+  }
+
   function toast(msg) {
     try { if (window.ksu && window.ksu.toast) { window.ksu.toast(msg); return; } } catch (e) {}
     showBusy(msg, 1600);
@@ -237,23 +248,29 @@
 
   var loading = false;
   function refresh() {
-    if (loading) { return Promise.resolve(); }
+    if (loading) { return Promise.resolve(false); }
     loading = true;
-    return sh('sh ' + O2P + ' state').then(function (r) {
+    return o2p('state').then(function (r) {
       loading = false;
       if (r.code !== 0) {
         runText.textContent = '读取失败';
-        return;
+        rules.textContent = '';
+        var why = (r.err || r.out || '').replace(/\r/g, '').trim();
+        logEl.className = why ? '' : 'empty';
+        logEl.textContent = '状态读取失败（退出码 ' + r.code + '）' +
+          (why ? '\n' + why : '\n没有输出，可能是模块目录里缺少 o2p 脚本');
+        return false;
       }
       render(parseState(r.out));
+      return true;
     });
   }
 
   function loadLog() {
     logEl.className = 'empty';
     logEl.textContent = '读取中…';
-    return sh('sh ' + O2P + ' log 200').then(function (r) {
-      var text = (r.out || '').replace(/\r/g, '').trim();
+    return o2p('log 200').then(function (r) {
+      var text = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
       logEl.className = text ? '' : 'empty';
       logEl.textContent = text || '还没有日志，服务启动后这里会出现输出';
       logEl.scrollTop = logEl.scrollHeight;
@@ -261,19 +278,22 @@
   }
 
   var running = false;
-  function act(path, label) {
+  function act(sub, label) {
     if (running) { return Promise.resolve(); }
     running = true;
     setDisabled(true);
     showBusy(label + '…');
-    return sh('sh ' + O2P + ' ' + path).then(function (r) {
+    return o2p(sub).then(function (r) {
+      var out = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
       return refresh().then(function () {
         running = false;
         setDisabled(false);
         showBusy('');
-        var msg = (r.out || '').replace(/\r/g, '').trim().split('\n').pop() || (r.code === 0 ? '完成' : '失败');
+        var msg = out.split('\n').pop() || (r.code === 0 ? '完成' : '失败（退出码 ' + r.code + '）');
         toast(label + '：' + msg);
-        return loadLog();
+        if (r.code === 0) { return loadLog(); }
+        logEl.className = out ? '' : 'empty';
+        logEl.textContent = out || label + '失败（退出码 ' + r.code + '，没有输出）';
       });
     });
   }
@@ -294,7 +314,7 @@
   $('start').addEventListener('click', function () { act('start', '启动'); });
   $('stop').addEventListener('click', function () { act('stop', '停止'); });
   $('restart').addEventListener('click', function () { act('restart', '重启'); });
-  $('refresh').addEventListener('click', function () { refresh().then(loadLog); });
+  $('refresh').addEventListener('click', function () { refresh().then(function (ok) { if (ok) { loadLog(); } }); });
   $('reload').addEventListener('click', loadLog);
 
   $('mgmt').addEventListener('click', function () {
@@ -305,12 +325,12 @@
         return;
       }
     } catch (e) {}
-    sh('am start --user 0 -a android.intent.action.VIEW -d "' + MGMT + '"').then(function (r) {
-      if (r.code !== 0) { toast('打不开浏览器：' + r.out); }
+    sh('/system/bin/am start --user 0 -a android.intent.action.VIEW -d "' + MGMT + '"').then(function (r) {
+      if (r.code !== 0) { toast('打不开浏览器：' + (r.err || r.out || r.code)); }
     });
   });
 
-  refresh().then(loadLog);
+  refresh().then(function (ok) { if (ok) { loadLog(); } });
 })();
 </script>
 </body>

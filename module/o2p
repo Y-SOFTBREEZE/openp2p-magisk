@@ -4,6 +4,8 @@
 
 DATA=/data/adb/openp2p
 BIN=$DATA/openp2p
+[ -f "$BIN" ] || BIN=/data/adb/modules/openp2p/bin/openp2p
+[ -f "$BIN" ] || BIN=/data/adb/modules_update/openp2p/bin/openp2p
 CFG=$DATA/config.json
 PIDF=$DATA/run/supervisord.pid
 SUPLOG=$DATA/log/service.log
@@ -30,7 +32,11 @@ start() {
     mkdir -p "$DATA/log" "$DATA/run"
     rm -f "$DATA/run/stopped"
     # nohup + 独立脚本，WebUI 里点启动时进程不会随管理器 shell 一起退出
-    nohup sh "$DATA/daemon.sh" >/dev/null 2>&1 &
+    # 软链可能断（安装后未重启时指向 modules_update），逐个探测
+    D=$DATA/daemon.sh
+    [ -f "$D" ] || D=/data/adb/modules/openp2p/daemon.sh
+    [ -f "$D" ] || D=/data/adb/modules_update/openp2p/daemon.sh
+    nohup sh "$D" >/dev/null 2>&1 &
     sleep 3
     if [ -n "$(pidof openp2p)" ]; then
         echo "已启动 (pid $(pidof openp2p))"
