@@ -1,0 +1,97 @@
+name: build-module
+
+on:
+  schedule:
+    # 每天 19:00 UTC（北京时间 03:00）检查一次
+    - cron: '0 19 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '指定版本号，例如 3.25.14；留空则自动取官方最新'
+        required: false
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      WANT: ${{ github.event.inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 取官方最新版本
+        id: v
+        run: |
+          set -euo pipefail
+          if [ -n "${WANT:-}" ]; then
+            ver="$WANT"
+            url="https://console.openp2p.cn/download/v1/$ver/openp2p-$ver.android-arm64.tar.gz"
+          else
+            out=$(bash scripts/latest.sh)
+            ver=$(printf '%s\n' "$out" | sed -n 1p)
+            url=$(printf '%s\n' "$out" | sed -n 2p)
+          fi
+          echo "版本: $ver"
+          echo "地址: $url"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: 检查是否已发布
+        id: check
+        run: |
+          if gh release view "v${{ steps.v.outputs.ver }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.v.outputs.ver }} 已存在，跳过"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 下载官方安卓 arm64 客户端
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSLk --retry 3 --retry-delay 3 -o pkg.tar.gz "${{ steps.v.outputs.url }}"
+          tar xzf pkg.tar.gz
+          ls -l openp2p
+
+      - name: 打包为 Magisk / KernelSU 模块
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          bash scripts/build.sh "${{ steps.v.outputs.ver }}" openp2p \
+            "openp2p-${{ steps.v.outputs.ver }}-module.zip"
+          unzip -l "openp2p-${{ steps.v.outputs.ver }}-module.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.check.outputs.skip != 'true'
+        with:
+          name: openp2p-module-${{ steps.v.outputs.ver }}
+          path: openp2p-*-module.zip
+          retention-days: 30
+
+      - name: 发布 Release
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          gh release create "v${{ steps.v.outputs.ver }}" \
+            "openp2p-${{ steps.v.outputs.ver }}-module.zip" \
+            --title "openp2p ${{ steps.v.outputs.ver }} · arm64 模块" \
+            --notes "自动打包自 openp2p 官方 Android arm64 客户端 ${{ steps.v.outputs.ver }}。
+
+          **安装**：Magisk / KernelSU 里刷入 zip，重启。
+
+          **配置**（不需要装官方 App）：
+          \`\`\`
+          su -c o2p token <控制台里的 TOKEN>
+          su -c o2p status
+          \`\`\`
+
+          转发规则在 https://console.openp2p.cn 网页端配置，客户端登录后自动下发。
+
+          支持的版本与限制见仓库 README。"

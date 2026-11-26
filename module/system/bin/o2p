@@ -1,0 +1,3 @@
+#!/system/bin/sh
+# 让 o2p 出现在 PATH 里，直接 su -c o2p 即可
+exec /data/adb/openp2p/o2p "$@"

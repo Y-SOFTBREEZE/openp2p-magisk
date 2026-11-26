@@ -1,0 +1,128 @@
+#!/system/bin/sh
+# OpenP2P 模块控制脚本
+# 用法：su -c o2p <命令>      或      su -c o2p
+
+DATA=/data/adb/openp2p
+BIN=$DATA/openp2p
+CFG=$DATA/config.json
+PIDF=$DATA/run/supervisord.pid
+SUPLOG=$DATA/log/service.log
+
+field() {
+    grep -o "\"$1\"[[:space:]]*:[[:space:]]*[^,}]*" "$CFG" 2>/dev/null \
+        | head -n1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d '"'
+}
+
+start() {
+    if [ -n "$(pidof openp2p)" ]; then
+        echo "已在运行 (pid $(pidof openp2p))"
+        return 0
+    fi
+    tok=$(field Token)
+    if [ -z "$tok" ] || [ "$tok" = "0" ]; then
+        echo "未配置 token，先执行： o2p token <控制台里的 TOKEN>"
+        return 1
+    fi
+    mkdir -p "$DATA/log" "$DATA/run"
+    (
+        while true; do
+            cd "$DATA" || exit 1
+            ./openp2p -nv
+            sleep 20
+        done
+    ) >> "$SUPLOG" 2>&1 &
+    echo $! > "$PIDF"
+    sleep 3
+    if [ -n "$(pidof openp2p)" ]; then
+        echo "已启动 (pid $(pidof openp2p))"
+    else
+        echo "启动失败，看日志： o2p log"
+    fi
+}
+
+stop() {
+    [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null
+    rm -f "$PIDF"
+    for p in $(pidof openp2p); do
+        kill "$p" 2>/dev/null
+    done
+    echo "已停止"
+}
+
+status() {
+    ver=$("$BIN" version 2>/dev/null | head -n1)
+    echo "版本     : ${ver:-未知}"
+    echo "节点名   : $(field Node)"
+    echo "Token    : $(field Token)"
+    echo "共享带宽 : $(field ShareBandwidth) Mbps"
+    if [ -n "$(pidof openp2p)" ]; then
+        echo "进程     : 运行中 (pid $(pidof openp2p))"
+    else
+        echo "进程     : 未运行"
+    fi
+    echo "配置     : $CFG"
+    apps=$(sed -n '/"apps"/,$p' "$CFG" 2>/dev/null | grep -c '"AppName"')
+    echo "本地规则 : ${apps:-0} 条（控制台下发的规则不写进配置文件）"
+}
+
+set_token() {
+    case "$1" in
+        ''|*[!0-9]*) echo "token 必须是纯数字，从 console.openp2p.cn 的「我的」页面复制"; return 1 ;;
+    esac
+    if [ ! -f "$CFG" ]; then
+        printf '{\n  "network": {\n    "Node": "",\n    "Token": 0,\n    "ShareBandwidth": 10,\n    "ServerHost": "api.openp2p.cn",\n    "ServerPort": 27183\n  },\n  "apps": []\n}\n' > "$CFG"
+    fi
+    if grep -q '"Token"' "$CFG"; then
+        sed -i "s/\"Token\"[[:space:]]*:[[:space:]]*[0-9]*/\"Token\": $1/" "$CFG"
+    else
+        sed -i "s/\"network\"[[:space:]]*:[[:space:]]*{/\"network\": {\n    \"Token\": $1,/" "$CFG"
+    fi
+    chmod 600 "$CFG"
+    echo "token 已写入"
+    stop >/dev/null
+    sleep 1
+    start
+}
+
+set_node() {
+    case "$1" in
+        '') echo "用法： o2p node <节点名>（8-31 个字符，留空则用服务器自动分配的名字）"; return 1 ;;
+    esac
+    n=$(printf '%s' "$1" | wc -c)
+    if [ "$n" -lt 8 ] || [ "$n" -gt 31 ]; then
+        echo "节点名长度必须在 8-31 之间，当前 $n"
+        return 1
+    fi
+    if grep -q '"Node"' "$CFG"; then
+        sed -i "s/\"Node\"[[:space:]]*:[[:space:]]*\"[^\"]*\"/\"Node\": \"$1\"/" "$CFG"
+    fi
+    echo "节点名已写入，重启生效"
+    stop >/dev/null
+    sleep 1
+    start
+}
+
+show_log() {
+    n=${1:-30}
+    f=$(ls -t "$DATA"/log/*.log 2>/dev/null | head -n1)
+    if [ -z "$f" ]; then
+        echo "还没有日志，服务可能没启动过"
+        return 1
+    fi
+    echo "== $f（最后 $n 行）=="
+    tail -n "$n" "$f"
+}
+
+case "${1:-status}" in
+    status)  status ;;
+    start)   start ;;
+    stop)    stop ;;
+    restart) stop; sleep 1; start ;;
+    token)   set_token "$2" ;;
+    node)    set_node "$2" ;;
+    log)     show_log "$2" ;;
+    config)  cat "$CFG" ;;
+    *)
+        echo "用法: o2p <status|start|stop|restart|token <TOKEN>|node <名字>|log [行数]|config>"
+        ;;
+esac

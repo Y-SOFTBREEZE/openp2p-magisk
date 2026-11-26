@@ -1,0 +1,10 @@
+{
+  "network": {
+    "Node": "",
+    "Token": 0,
+    "ShareBandwidth": 10,
+    "ServerHost": "api.openp2p.cn",
+    "ServerPort": 27183
+  },
+  "apps": []
+}
