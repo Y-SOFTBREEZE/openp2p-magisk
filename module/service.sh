@@ -2,7 +2,7 @@
 # OpenP2P 模块：开机启动
 # 由 Magisk / KernelSU 在 late_start service 阶段以 root 执行
 
-MODDIR=${0%/*}
+MODDIR=$(cd "${0%/*}" 2>/dev/null && pwd)
 DATA=/data/adb/openp2p
 BIN=$DATA/openp2p
 CFG=$DATA/config.json
@@ -12,8 +12,12 @@ PIDF=$DATA/run/supervisord.pid
 mkdir -p "$DATA/log" "$DATA/run"
 
 # 二进制与守护脚本软链（模块升级后路径不变，配置留在 /data/adb/openp2p）
-[ -e "$BIN" ] || ln -sf "$MODDIR/bin/openp2p" "$BIN"
-[ -e "$DATA/daemon.sh" ] || ln -sf "$MODDIR/daemon.sh" "$DATA/daemon.sh"
+# 无条件重建：安装时 $MODPATH 可能是 /data/adb/modules_update/openp2p，重启后那个路径就没了，
+# 只判断「存在」会让软链一直是断的。$MODDIR 是启动时的真实模块目录。
+rm -f "$BIN" "$DATA/o2p" "$DATA/daemon.sh"
+ln -sf "$MODDIR/bin/openp2p" "$BIN"
+ln -sf "$MODDIR/o2p" "$DATA/o2p"
+ln -sf "$MODDIR/daemon.sh" "$DATA/daemon.sh"
 
 # 守护已在跑就不重复拉起
 [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null && exit 0

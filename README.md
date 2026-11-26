@@ -74,6 +74,23 @@ su -c o2p status
 /data/adb/openp2p/log/          openp2p.log（客户端日志）、service.log（守护进程日志）
 ```
 
+## 卸载
+
+模块页点卸载（Magisk 是删除模块），**然后重启**。KernelSU 的 `prune_modules` 和 Magisk 的启动清理都是在下次开机时才跑 `uninstall.sh`、再删模块目录。
+
+`uninstall.sh` 按顺序做这几件事：
+
+1. 写 `run/stopped` 停止标记，守护循环不会再把客户端拉起来
+2. `pkill` 守护循环 + `kill` 客户端，5 秒还不退就 `kill -9`
+3. 清 `OPSDWAN` iptables 链（SD-WAN 专用，安卓上 TUN 是桩走不到，留着也清一遍）
+4. `rm -rf /data/adb/openp2p`，配置、token、日志、pid、软链整棵删掉
+
+**所以卸载后 token 也没了**，重装要重新填。想留着就先备份 `/data/adb/openp2p/config.json`，重装后拷回去再重启。
+
+重启之前 `su -c o2p` 还能敲（软链指向已删目录会报错），`/system/bin/o2p` 这个 overlay 也要等重启才消失。想立刻停掉客户端又不想重启，用界面上的「停止」。
+
+覆盖安装（同 id 装新版本）不会执行 `uninstall.sh`，配置保留。唯一例外是「先卸载、没重启就直接装新版」——这时 `/data/adb/modules_update/openp2p` 存在，脚本判断为覆盖重装，跳过清理。
+
 ## 几个实现上的坑
 
 **DNS。** 这个二进制用 Go 内置解析器（`CGO_ENABLED=0`），读 `/etc/resolv.conf`。Android 上没有这个文件，官方 App 能上网是因为 gomobile 编译时开了 cgo，走 bionic。模块通过 overlay 提供 `system/etc/resolv.conf`（223.5.5.5 / 119.29.29.29 / 114.114.114.114）。所在网络这几个 DNS 不通，就改模块目录里这个文件再重启。
