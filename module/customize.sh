@@ -14,7 +14,8 @@ ui_print "- 准备数据目录 $DATA"
 mkdir -p "$DATA/log" "$DATA/run"
 
 chmod 755 "$MODPATH/bin/openp2p"
-chmod 755 "$MODPATH/o2p" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/uninstall.sh" "$MODPATH/daemon.sh"
+chmod 755 "$MODPATH/o2p" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/uninstall.sh" \
+          "$MODPATH/daemon.sh" "$MODPATH/post-fs-data.sh"
 chmod 755 "$MODPATH/system/bin/o2p"
 
 ln -sf "$MODPATH/bin/openp2p" "$DATA/openp2p"
@@ -23,6 +24,10 @@ ln -sf "$MODPATH/daemon.sh" "$DATA/daemon.sh"
 
 if [ -f "$DATA/config.json" ]; then
     ui_print "- 保留已有配置 $DATA/config.json"
+    if ! grep -q '"TLSInsecureSkipVerify"' "$DATA/config.json"; then
+        sed -i '1s/{/{\n  "TLSInsecureSkipVerify": true,/' "$DATA/config.json"
+        ui_print "- 旧配置已补 TLSInsecureSkipVerify（Android 上不跳过校验会登录失败）"
+    fi
 else
     cp "$MODPATH/config.default.json" "$DATA/config.json"
     ui_print "- 已创建 $DATA/config.json"
@@ -36,6 +41,8 @@ chmod 600 "$DATA/config.json"
 ui_print "- 节点名：$(sed -n 's/.*"Node"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DATA/config.json")"
 
 VER=$(sed -n 's/^version=//p' "$MODPATH/module.prop")
+echo "$VER" > "$DATA/ver"
+[ -f "$DATA/autostart" ] || echo on > "$DATA/autostart"
 ui_print "- 版本 $VER"
 
 if [ "$(sed -n 's/.*"Token"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$DATA/config.json" | head -n1)" = "0" ] || \

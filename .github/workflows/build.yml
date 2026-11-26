@@ -86,11 +86,13 @@ jobs:
 
           **安装**：Magisk / KernelSU 里刷入 zip，重启。
 
-          **配置**：模块页点「打开」进图形界面，填 token、启停、看日志、跳管理页；命令行等价：
+          **配置**：模块页点「打开」进图形界面，填 token、启停、开关机自启、看日志、导出诊断、跳管理页；命令行等价：
 
           \`\`\`
           su -c o2p token <控制台里的 TOKEN>
           su -c o2p status
+          su -c o2p diag      # 登不上、控制台看不到设备时先跑这个
+          su -c o2p export    # 诊断包写到 Download/
           \`\`\`
 
           转发规则在 https://console.openp2p.cn 网页端配置，客户端登录后自动下发。

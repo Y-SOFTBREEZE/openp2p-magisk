@@ -9,8 +9,11 @@
 - 运行状态、版本、节点名、token（打码）、本地规则条数
 - token 输入框，填完点「保存并启动」
 - 启动 / 停止 / 重启
+- **开机自启开关**：关掉后重启不自动拉起，当前这次开机内继续跑
 - 一键打开 console.openp2p.cn 管理页（跳系统浏览器）
-- 运行日志，可刷新
+- 运行日志，可刷新；**「诊断」**打印环境/进程/DNS，**「导出」**把诊断包写到 `Download/openp2p-<时间>.txt`
+
+模块列表里那一行描述会跟着状态变：`[运行中] android-a1b2c3 · v3.25.14`、`[已停止]`、`[未配置 Token]`，不用点进去也知道跑没跑。
 
 **入口依赖管理器版本。** KernelSU 官方管理器要较新的版本才认模块里的 `webroot`（模块页出现「打开」按钮就是支持）。Magisk 官方 App 没有 WebUI，需要装 [MMRL](https://github.com/MMRLApp/MMRL) 或 KsuWebUIStandalone 才能打开同一个页面。
 
@@ -53,16 +56,29 @@ su -c o2p status
 
 | 命令 | 作用 |
 | --- | --- |
-| `o2p` / `o2p status` | 版本、节点名、token、进程状态、本地规则条数 |
+| `o2p` / `o2p status` | 版本、节点名、token、进程状态、开机自启、本地规则条数 |
 | `o2p token <TOKEN>` | 写入 token 并重启服务 |
 | `o2p node <名字>` | 固定节点名（8-31 字符） |
 | `o2p start` / `o2p stop` / `o2p restart` | 手动控制 |
-| `o2p log [行数]` | 看日志，默认 30 行 |
+| `o2p autostart on` / `off` | 开机自启开关（界面里也有同一个开关） |
+| `o2p log [行数]` | 看日志，默认 60 行 |
+| `o2p diag` | 环境、进程、DNS、最近日志，一眼看出卡在哪 |
+| `o2p export` | 诊断包写到 `Download/openp2p-<时间>.txt`，可直接发给别人看 |
 | `o2p config` | 打印 config.json |
 
 模块页的「操作」按钮等同于 `o2p status`。某些 ROM 上 `/system/bin` 被写保护导致 `o2p` 找不到，直接用 `/data/adb/openp2p/o2p status`。
 
-`o2p stop` 会写一个停止标记，之后开机不会自启；`o2p start` 清掉标记，恢复自启。
+`o2p stop` 会写一个停止标记，之后开机不会自启；`o2p start` 清掉标记，恢复自启。想让机器重启后不自动跑、但又不想手动停，用 `o2p autostart off`（或界面上的开关）——它只影响下次开机的行为。
+
+## 会不会被系统杀掉
+
+不会。客户端是 root 起的原生进程，不是 App，不受电池优化、后台限制、`LMK` 的 App 优先级那一套管。守护循环 `daemon.sh` 会盯着它，进程没了 20 秒后重新拉起，日志里会写一行「openp2p 退出（code …），20 秒后拉起」。真要看是不是活着：
+
+```sh
+su -c o2p status      # 进程 : 运行中 (pid …)
+```
+
+唯一会让它停下的：模块被禁用/卸载、`o2p stop`、或把「开机自启」关掉后重启。
 
 共享带宽默认 10 Mbps（`ShareBandwidth`），只在私有网络用就把 `config.json` 里改成 0，改完 `o2p restart`。
 
@@ -71,6 +87,7 @@ su -c o2p status
 ```
 /data/adb/modules/openp2p/      模块本体，升级时整体替换
 /data/adb/openp2p/config.json   配置，升级不丢
+/data/adb/openp2p/autostart     开机自启开关（on / off）
 /data/adb/openp2p/log/          openp2p.log（客户端日志）、service.log（守护进程日志）
 ```
 
@@ -93,7 +110,11 @@ su -c o2p status
 
 ## 几个实现上的坑
 
-**DNS。** 这个二进制用 Go 内置解析器（`CGO_ENABLED=0`），读 `/etc/resolv.conf`。Android 上没有这个文件，官方 App 能上网是因为 gomobile 编译时开了 cgo，走 bionic。模块通过 overlay 提供 `system/etc/resolv.conf`（223.5.5.5 / 119.29.29.29 / 114.114.114.114）。所在网络这几个 DNS 不通，就改模块目录里这个文件再重启。
+**TLS 必须跳过校验，否则登录不上。** Go 的 `x509.SystemCertPool()` 只认 `/etc/ssl/certs/ca-certificates.crt` 那一串 Debian/Alpine 路径，Android 上都不存在（系统证书在 `/system/etc/security/cacerts/`，还是散列目录）。二进制里只内置了三张根证书，服务器的自签证书链对不上就 `login error`，控制台永远看不到这台设备。所以配置里默认 `"TLSInsecureSkipVerify": true`，`daemon.sh` 把它翻成 `-insecure` 传给客户端。要严格校验证书就把这一项改成 `false`，但很可能就登不上了。
+
+**参数走命令行，不完全指望 config.json。** `core/config.go` 的 `parseParams` 里，命令行参数优先级最高（`fset.Visit` 会覆盖配置文件的值），而且 `flag.ExitOnError` 遇到不认识的参数会直接退出。所以 `daemon.sh` 把 token / node / serverhost / port / bandwidth / loglevel / insecure 全部从 `config.json` 读出来显式传过去，配置里哪个键名写歪了都不影响启动。日志里能看到实际使用的完整命令行。
+
+**DNS。** 这个二进制用 Go 内置解析器（`CGO_ENABLED=0`），读 `/etc/resolv.conf`。Android 上没有这个文件，官方 App 能上网是因为 gomobile 编译时开了 cgo，走 bionic。模块通过 overlay 提供 `system/etc/resolv.conf`（223.5.5.5 / 119.29.29.29 / 114.114.114.114）。就算 overlay 没生效也有兜底：客户端自己会再拿 119.29.29.29 解析一次（`core/common.go` 的 `lookupWithCustomDNS`）。所以 DNS 通常不是卡点，`o2p diag` 里能看到实际解析结果。
 
 **不用 `-d`。** 官方 daemon 模式依赖 `openp2p-cn/service` 注册系统服务，Android 没有 systemd，跑起来是空转。所以用模块自带的 `daemon.sh` 守护。
 
@@ -105,9 +126,9 @@ su -c o2p status
 
 ## WebUI 用到的接口
 
-- `ksu.exec(cmd, optionsJson, 回调名)`：回调 `(code, stdout, stderr)`。老管理器只有两参形式，页面里做了回退，再不行 20 秒超时。
+- `ksu.exec(cmd, optionsJson, 回调名)`：回调 `(code, stdout, stderr)`。老管理器只有两参形式，页面里做了回退，再不行 20 秒超时；返回值统一成数字和字符串（有的管理器给的是字符串码或行数组）。
 - `ksu_download.openExternal(url)`：跳系统浏览器打开管理页，没有这个接口就退回 `am start`。
-- 页面里的命令一律通过 `/data/adb/openp2p/o2p`，不依赖 PATH。
+- 页面里的命令不依赖 PATH，也不依赖软链：依次探测 `/data/adb/openp2p/o2p`、`/data/adb/modules/openp2p/o2p`、`/data/adb/modules_update/openp2p/o2p`，挑第一个真实存在的。状态读不出来时页面会顺带打印这三个路径和进程号，用来区分「脚本不在」和「脚本在但执行失败」。
 
 ## 自动构建
 

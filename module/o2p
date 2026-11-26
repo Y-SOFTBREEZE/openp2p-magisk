@@ -3,99 +3,171 @@
 # 用法：su -c o2p <命令>      或      su -c o2p
 
 DATA=/data/adb/openp2p
-BIN=$DATA/openp2p
-[ -f "$BIN" ] || BIN=/data/adb/modules/openp2p/bin/openp2p
-[ -f "$BIN" ] || BIN=/data/adb/modules_update/openp2p/bin/openp2p
 CFG=$DATA/config.json
 PIDF=$DATA/run/supervisord.pid
 SUPLOG=$DATA/log/service.log
+AUTO=$DATA/autostart
+
+# 二进制：优先数据目录的软链，退到模块目录（安装后未重启时软链可能是断的）
+BIN=$DATA/openp2p
+[ -f "$BIN" ] || BIN=/data/adb/modules/openp2p/bin/openp2p
+[ -f "$BIN" ] || BIN=/data/adb/modules_update/openp2p/bin/openp2p
+
+# 模块目录（读版本号、找 daemon.sh）
+MODDIR=
+for d in /data/adb/modules/openp2p /data/adb/modules_update/openp2p; do
+    [ -f "$d/module.prop" ] && { MODDIR=$d; break; }
+done
 
 field() {
+    [ -f "$CFG" ] || return 0
     grep -o "\"$1\"[[:space:]]*:[[:space:]]*[^,}]*" "$CFG" 2>/dev/null \
         | head -n1 | sed 's/^[^:]*:[[:space:]]*//' | tr -d '"'
 }
 
+# 老版本装的配置里没有 TLSInsecureSkipVerify，补一个：Android 上系统根证书池是空的，
+# 不跳过校验会 login 失败（控制台看不到设备）。只补一次。
+ensure_cfg() {
+    [ -f "$CFG" ] || return 0
+    grep -q '"TLSInsecureSkipVerify"' "$CFG" && return 0
+    grep -q '^[[:space:]]*{' "$CFG" || return 0
+    sed -i '1s/{/{\n  "TLSInsecureSkipVerify": true,/' "$CFG"
+}
+
+# 版本号从 module.prop 读，不去执行二进制：
+# `openp2p version` 要先把 Go 运行时和日志初始化起来，状态页每次刷新都跑一遍没有必要
+version() {
+    v=
+    [ -n "$MODDIR" ] && v=$(sed -n 's/^version=//p' "$MODDIR/module.prop" 2>/dev/null | head -n1)
+    [ -n "$v" ] || v=$(cat "$DATA/ver" 2>/dev/null)
+    echo "${v:-未知}"
+}
+
+daemon_path() {
+    D=$DATA/daemon.sh
+    [ -f "$D" ] || D=/data/adb/modules/openp2p/daemon.sh
+    [ -f "$D" ] || D=/data/adb/modules_update/openp2p/daemon.sh
+    echo "$D"
+}
+
+autostart_state() {
+    [ "$(cat "$AUTO" 2>/dev/null)" = "off" ] && echo 0 || echo 1
+}
+
+# 模块列表里那行描述直接写当前状态，不进界面也能看出跑没跑
+refresh_desc() {
+    [ -n "$MODDIR" ] || return 0
+    tk=$(field Token)
+    if [ -z "$tk" ] || [ "$tk" = "0" ]; then
+        s="[未配置 Token] 点模块页「打开」填写"
+    elif [ -n "$(pidof openp2p)" ]; then
+        s="[运行中] $(field Node) · v$(version)"
+    else
+        s="[已停止] 点「打开」可启动"
+    fi
+    sed -i "s|^description=.*|description=$s · 端口转发可用，SD-WAN 不可用|" "$MODDIR/module.prop" 2>/dev/null
+    return 0
+}
+
+running() {
+    pidof openp2p 2>/dev/null | awk '{print $1}'
+}
+
+# 守护循环（daemon.sh）还活着就返回它的 pid
+daemon_pid() {
+    [ -f "$PIDF" ] || return 1
+    p=$(cat "$PIDF" 2>/dev/null)
+    [ -n "$p" ] || return 1
+    kill -0 "$p" 2>/dev/null || return 1
+    echo "$p"
+}
+
 start() {
+    ensure_cfg
     tok=$(field Token)
     if [ -z "$tok" ] || [ "$tok" = "0" ]; then
         echo "未配置 token，先在模块界面填，或执行： o2p token <TOKEN>"
         return 1
     fi
-    if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
-        echo "守护已在运行 (pid $(cat "$PIDF"))"
+    if daemon_pid >/dev/null; then
+        echo "守护已在运行 (pid $(daemon_pid))"
         return 0
     fi
-    if [ -n "$(pidof openp2p)" ]; then
-        echo "已在运行 (pid $(pidof openp2p))"
+    if [ -n "$(running)" ]; then
+        echo "已在运行 (pid $(running))"
         return 0
     fi
     mkdir -p "$DATA/log" "$DATA/run"
     rm -f "$DATA/run/stopped"
     # nohup + 独立脚本，WebUI 里点启动时进程不会随管理器 shell 一起退出
-    # 软链可能断（安装后未重启时指向 modules_update），逐个探测
-    D=$DATA/daemon.sh
-    [ -f "$D" ] || D=/data/adb/modules/openp2p/daemon.sh
-    [ -f "$D" ] || D=/data/adb/modules_update/openp2p/daemon.sh
-    nohup sh "$D" >/dev/null 2>&1 &
+    nohup sh "$(daemon_path)" >/dev/null 2>&1 &
     sleep 3
-    if [ -n "$(pidof openp2p)" ]; then
-        echo "已启动 (pid $(pidof openp2p))"
-    elif [ -f "$PIDF" ]; then
+    if [ -n "$(running)" ]; then
+        echo "已启动 (pid $(running))"
+    elif daemon_pid >/dev/null; then
         echo "守护已启动，客户端还在连接，看日志： o2p log"
     else
         echo "启动失败，看日志： o2p log"
     fi
+    refresh_desc
 }
 
 stop() {
     mkdir -p "$DATA/run"
     # 先立停止标记，守护循环下一轮自己退出，避免被 20 秒后重新拉起
     touch "$DATA/run/stopped"
-    if [ -f "$PIDF" ]; then
-        kill "$(cat "$PIDF")" 2>/dev/null
-        rm -f "$PIDF"
-    fi
-    for p in $(pidof openp2p); do
-        kill "$p" 2>/dev/null
+    p=$(daemon_pid)
+    [ -n "$p" ] && kill "$p" 2>/dev/null
+    rm -f "$PIDF"
+    for x in $(pidof openp2p); do
+        kill "$x" 2>/dev/null
     done
     sleep 1
     echo "已停止"
+    refresh_desc
 }
 
 status() {
-    ver=$("$BIN" version 2>/dev/null | head -n1)
-    echo "版本     : ${ver:-未知}"
+    echo "版本     : $(version)"
     echo "节点名   : $(field Node)"
     echo "Token    : $(field Token)"
     echo "共享带宽 : $(field ShareBandwidth) Mbps"
-    if [ -n "$(pidof openp2p)" ]; then
-        echo "进程     : 运行中 (pid $(pidof openp2p))"
+    echo "开机自启 : $([ "$(autostart_state)" = 1 ] && echo 开 || echo 关)"
+    if [ -n "$(running)" ]; then
+        echo "进程     : 运行中 (pid $(running))"
     else
         echo "进程     : 未运行"
     fi
     echo "配置     : $CFG"
-    apps=$(sed -n '/"apps"/,$p' "$CFG" 2>/dev/null | grep -c '"AppName"')
+    apps=$(grep -c '"AppName"' "$CFG" 2>/dev/null)
     echo "本地规则 : ${apps:-0} 条（控制台下发的规则不写进配置文件）"
 }
 
-# 给 WebUI 用的机器可读输出，每行 key=value
+# 给 WebUI 用的机器可读输出，每行 key=value。
+# 第一行固定 ok=1：界面靠它判断「脚本本身跑通没有」，跟业务状态无关
 state() {
-    if [ -n "$(pidof openp2p)" ]; then
+    ensure_cfg
+    echo "ok=1"
+    p=$(running)
+    if [ -n "$p" ]; then
         echo "run=1"
-        echo "pid=$(pidof openp2p | awk '{print $1}')"
+        echo "pid=$p"
     else
         echo "run=0"
         echo "pid="
     fi
-    echo "ver=$("$BIN" version 2>/dev/null | head -n1)"
+    echo "ver=$(version)"
     echo "node=$(field Node)"
     tk=$(field Token)
     echo "token=$tk"
     echo "token_masked=$(printf '%s' "$tk" | sed 's/^\([0-9]\{4\}\)[0-9]*\([0-9]\{4\}\)$/\1…\2/')"
     echo "sb=$(field ShareBandwidth)"
-    apps=$(sed -n '/"apps"/,$p' "$CFG" 2>/dev/null | grep -c '"AppName"')
+    echo "autostart=$(autostart_state)"
+    echo "insecure=$(field TLSInsecureSkipVerify)"
+    apps=$(grep -c '"AppName"' "$CFG" 2>/dev/null)
     echo "rules=${apps:-0}"
     echo "cfg=$CFG"
+    echo "daemon=$(daemon_pid || echo '')"
 }
 
 ensure_node() {
@@ -115,7 +187,7 @@ set_token() {
         ''|*[!0-9]*) echo "token 必须是纯数字，从 console.openp2p.cn 的「我的」页面复制"; return 1 ;;
     esac
     if [ ! -f "$CFG" ]; then
-        printf '{\n  "network": {\n    "Node": "",\n    "Token": 0,\n    "ShareBandwidth": 10,\n    "ServerHost": "api.openp2p.cn",\n    "ServerPort": 27183\n  },\n  "apps": []\n}\n' > "$CFG"
+        printf '{\n  "network": {\n    "Node": "",\n    "Token": 0,\n    "ShareBandwidth": 10,\n    "ServerHost": "api.openp2p.cn",\n    "ServerPort": 27183,\n    "TLSInsecureSkipVerify": true\n  },\n  "apps": []\n}\n' > "$CFG"
     fi
     if grep -q '"Token"' "$CFG"; then
         sed -i "s/\"Token\"[[:space:]]*:[[:space:]]*[0-9]*/\"Token\": $1/" "$CFG"
@@ -131,7 +203,7 @@ set_token() {
 
 set_node() {
     case "$1" in
-        '') echo "用法： o2p node <节点名>（8-31 个字符，留空则用服务器自动分配的名字）"; return 1 ;;
+        '') echo "用法： o2p node <节点名>（8-31 个字符）"; return 1 ;;
     esac
     n=$(printf '%s' "$1" | wc -c)
     if [ "$n" -lt 8 ] || [ "$n" -gt 31 ]; then
@@ -147,29 +219,130 @@ set_node() {
     start
 }
 
+set_autostart() {
+    case "$1" in
+        on|ON|1)   echo on  > "$AUTO"; echo "开机自启已开启" ;;
+        off|OFF|0) echo off > "$AUTO"; echo "开机自启已关闭（本次开机内仍继续运行）" ;;
+        *) echo "用法： o2p autostart on|off" ;;
+    esac
+    refresh_desc
+}
+
 show_log() {
-    n=${1:-30}
-    f=$(ls -t "$DATA"/log/*.log 2>/dev/null | head -n1)
-    if [ -z "$f" ]; then
+    n=${1:-60}
+    out=
+    for f in "$DATA"/log/openp2p.log "$DATA"/log/service.log; do
+        [ -f "$f" ] || continue
+        out="$out== ${f##*/}（最后 $n 行）==
+$(tail -n "$n" "$f")
+
+"
+    done
+    if [ -z "$out" ]; then
         echo "还没有日志，服务可能没启动过"
         return 1
     fi
-    echo "== $f（最后 $n 行）=="
-    tail -n "$n" "$f"
+    printf '%s' "$out"
+}
+
+# 导出诊断包到 Download 目录，界面里的「导出」用它
+do_export() {
+    ts=$(date '+%Y%m%d-%H%M%S')
+    dir=/sdcard/Download
+    [ -d "$dir" ] || dir=/storage/emulated/0/Download
+    [ -d "$dir" ] || dir=$DATA/log
+    f=$dir/openp2p-$ts.txt
+
+    {
+        echo "OpenP2P 模块诊断 $ts"
+        echo "===== 概览 ====="
+        status
+        echo
+        echo "===== 设备 ====="
+        for k in ro.product.brand ro.product.model ro.product.device \
+                 ro.build.version.release ro.build.version.sdk sys.boot_completed; do
+            echo "$k=$(getprop $k 2>/dev/null)"
+        done
+        echo "kernel=$(uname -r)"
+        echo
+        echo "===== 文件 ====="
+        echo "MODDIR=$MODDIR"
+        echo "BIN=$BIN"
+        ls -l "$DATA" 2>&1
+        echo "--- $DATA/log ---"
+        ls -l "$DATA"/log 2>&1
+        if [ -n "$MODDIR" ]; then
+            echo "--- $MODDIR ---"
+            ls -l "$MODDIR" 2>&1
+        fi
+        echo
+        echo "===== 配置（token 已打码）====="
+        sed 's/"Token"[[:space:]]*:[[:space:]]*[0-9][0-9]*/"Token": ******/' "$CFG" 2>&1
+        echo
+        echo "===== 网络 ====="
+        echo "/etc/resolv.conf:"
+        cat /etc/resolv.conf 2>&1
+        echo "ping 119.29.29.29:"
+        ping -c 1 -W 2 119.29.29.29 2>&1 | tail -n 3
+        echo "ping api.openp2p.cn（能出 IP 就说明域名解析正常）:"
+        ping -c 1 -W 2 api.openp2p.cn 2>&1 | tail -n 3
+        echo
+        echo "===== 日志 ====="
+        for l in "$DATA"/log/service.log "$DATA"/log/openp2p.log; do
+            [ -f "$l" ] || continue
+            echo "--- ${l##*/}（最后 200 行）---"
+            tail -n 200 "$l"
+            echo
+        done
+    } > "$f" 2>&1
+
+    echo "已导出： $f"
+}
+
+# 一眼看出卡在哪：脚本、二进制、DNS、登录
+diag() {
+    echo "== 环境 =="
+    echo "模块目录 : ${MODDIR:-未找到}"
+    echo "版本     : $(version)"
+    echo "二进制   : $BIN $([ -x "$BIN" ] && echo '(可执行)' || echo '(缺失或不可执行)')"
+    echo "配置     : $CFG $([ -f "$CFG" ] && echo '(存在)' || echo '(缺失)')"
+    echo "自启     : $([ "$(autostart_state)" = 1 ] && echo 开 || echo 关)"
+    echo "停止标记 : $([ -f "$DATA/run/stopped" ] && echo '有（上次手动停止）' || echo 无)"
+    echo
+    echo "== 进程 =="
+    echo "客户端 : $(running || echo 无)"
+    echo "守护   : $(daemon_pid || echo 无)"
+    echo
+    echo "== DNS =="
+    if [ -f /etc/resolv.conf ]; then
+        echo "/etc/resolv.conf 存在："
+        sed 's/^/  /' /etc/resolv.conf
+    else
+        echo "/etc/resolv.conf 不存在（客户端会用内置的 119.29.29.29 兜底）"
+    fi
+    echo -n "解析 api.openp2p.cn: "
+    ping -c 1 -W 2 api.openp2p.cn 2>&1 | sed -n 's/.*(\([0-9.]*\)).*/\1/p' | head -n1
+    echo
+    echo "== 最近日志 =="
+    tail -n 15 "$DATA/log/openp2p.log" 2>/dev/null || echo "（没有 openp2p.log）"
 }
 
 case "${1:-status}" in
-    status)  status ;;
-    state)   state ;;
-    start)   start ;;
-    stop)    stop ;;
-    restart) stop; sleep 1; start ;;
-    token)   set_token "$2" ;;
+    status)     status ;;
+    state)      state ;;
+    start)      start ;;
+    stop)       stop ;;
+    restart)    stop; sleep 1; start ;;
+    token)      set_token "$2" ;;
     ensure-node) ensure_node ;;   # 内部用：节点名为空时生成一个
-    node)    set_node "$2" ;;
-    log)     show_log "$2" ;;
-    config)  cat "$CFG" ;;
+    refresh-desc) refresh_desc ;; # 内部用：模块列表的状态行
+    node)       set_node "$2" ;;
+    autostart)  set_autostart "$2" ;;
+    log)        show_log "$2" ;;
+    export)     do_export ;;
+    diag)       diag ;;
+    config)     cat "$CFG" ;;
     *)
-        echo "用法: o2p <status|state|start|stop|restart|token <TOKEN>|node <名字>|log [行数]|config>"
+        echo "用法: o2p <status|state|start|stop|restart|token <TOKEN>|node <名字>|autostart on|off|log [行数]|export|diag|config>"
         ;;
 esac

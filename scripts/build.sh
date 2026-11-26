@@ -29,8 +29,8 @@ VCODE=$(printf '%s' "$VER" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')
 sed -i "s/^version=.*/version=$VER/; s/^versionCode=.*/versionCode=$VCODE/" "$WORK/module.prop"
 
 for f in "$WORK/customize.sh" "$WORK/service.sh" "$WORK/uninstall.sh" "$WORK/action.sh" \
-         "$WORK/daemon.sh" "$WORK/o2p" "$WORK/bin/openp2p" "$WORK/system/bin/o2p" \
-         "$WORK/META-INF/com/google/android/update-binary"; do
+         "$WORK/daemon.sh" "$WORK/post-fs-data.sh" "$WORK/o2p" "$WORK/bin/openp2p" \
+         "$WORK/system/bin/o2p" "$WORK/META-INF/com/google/android/update-binary"; do
     chmod 755 "$f"
 done
 chmod 644 "$WORK/module.prop" "$WORK/config.default.json" "$WORK/system/etc/resolv.conf" \

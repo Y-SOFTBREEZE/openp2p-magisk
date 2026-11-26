@@ -6,5 +6,7 @@
     "ServerHost": "api.openp2p.cn",
     "ServerPort": 27183
   },
+  "TLSInsecureSkipVerify": true,
+  "LogLevel": 1,
   "apps": []
 }

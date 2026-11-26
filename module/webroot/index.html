@@ -48,8 +48,18 @@
   .row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:13px}
   .row .k{color:var(--dim);flex:none;margin-right:12px}
   .row .v{text-align:right;word-break:break-all;min-width:0;font-variant-numeric:tabular-nums}
+  .row.mid{align-items:center}
   .v.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
   .v.warn{color:var(--warn)}
+
+  .sw{position:relative;display:inline-block;width:46px;height:26px;flex:none}
+  .sw input{position:absolute;width:0;height:0;opacity:0}
+  .sw i{position:absolute;inset:0;background:var(--off);border-radius:999px;transition:background .18s}
+  .sw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;
+               background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
+  .sw input:checked + i{background:var(--on)}
+  .sw input:checked + i::after{transform:translateX(20px)}
+  .sw input:disabled + i{opacity:.45}
 
   label{display:block;font-size:12px;color:var(--dim);margin-bottom:7px}
   input{
@@ -110,6 +120,9 @@
       <div class="row"><span class="k">Token</span><span class="v mono" id="token">—</span></div>
       <div class="row"><span class="k">共享带宽</span><span class="v" id="sb">—</span></div>
       <div class="row"><span class="k">进程号</span><span class="v mono" id="pid">—</span></div>
+      <div class="row mid"><span class="k">开机自启</span>
+        <label class="sw"><input type="checkbox" id="auto"><i></i></label>
+      </div>
     </div>
   </div>
 
@@ -138,7 +151,11 @@
   <div class="card">
     <div class="loghead">
       <h2>运行日志</h2>
-      <button class="mini" id="reload">刷新</button>
+      <span>
+        <button class="mini" id="diag">诊断</button>
+        <button class="mini" id="export">导出</button>
+        <button class="mini" id="reload">刷新</button>
+      </span>
     </div>
     <pre id="log" class="empty">点「刷新」读取</pre>
   </div>
@@ -154,12 +171,16 @@
                    '/data/adb/modules/openp2p/o2p',
                    '/data/adb/modules_update/openp2p/o2p'];
   var MGMT = 'https://console.openp2p.cn';
+  // 状态读失败时用来定位：脚本在不在、进程在不在
+  var PROBE = 'for d in ' + O2P_PATHS.join(' ') +
+    '; do if [ -e "$d" ]; then echo "存在 $d"; else echo "缺失 $d"; fi; done; ' +
+    'echo "客户端 pid: $(pidof openp2p)"; echo "id: $(id -u)"';
   var seq = 0;
 
   var $ = function (id) { return document.getElementById(id); };
   var dot = $('dot'), runText = $('runText'), ver = $('ver'), node = $('node'),
       token = $('token'), sb = $('sb'), pid = $('pid'), rules = $('rules'),
-      logEl = $('log'), tk = $('tk'), busy = $('busy');
+      logEl = $('log'), tk = $('tk'), busy = $('busy'), autoEl = $('auto');
 
   function hasKsu() {
     return typeof window.ksu !== 'undefined' && typeof window.ksu.exec === 'function';
@@ -186,7 +207,12 @@
       }
 
       window[name] = function (code, out, err) {
-        finish({ code: code, out: out || '', err: err || '' });
+        // 不同管理器给的 code 可能是字符串、输出可能是行数组，统一成数字和字符串
+        var c = (typeof code === 'number') ? code : parseInt(code, 10);
+        if (isNaN(c)) { c = -1; }
+        if (Object.prototype.toString.call(out) === '[object Array]') { out = out.join('\n'); }
+        if (Object.prototype.toString.call(err) === '[object Array]') { err = err.join('\n'); }
+        finish({ code: c, out: out || '', err: err || '' });
       };
 
       try {
@@ -243,6 +269,7 @@
     token.className = 'v mono' + (unset ? ' warn' : '');
     sb.textContent = (s.sb ? s.sb : '—') + (s.sb ? ' Mbps' : '');
     pid.textContent = s.pid || '—';
+    autoEl.checked = s.autostart !== '0';
     rules.textContent = (s.rules || '0') + ' 条本地规则';
   }
 
@@ -255,11 +282,15 @@
       if (r.code !== 0) {
         runText.textContent = '读取失败';
         rules.textContent = '';
-        var why = (r.err || r.out || '').replace(/\r/g, '').trim();
-        logEl.className = why ? '' : 'empty';
-        logEl.textContent = '状态读取失败（退出码 ' + r.code + '）' +
-          (why ? '\n' + why : '\n没有输出，可能是模块目录里缺少 o2p 脚本');
-        return false;
+        var why = ((r.out || '') + '\n' + (r.err || '')).replace(/\r/g, '').trim();
+        // 状态读不出来时顺手探一下环境，省得来回猜
+        return sh(PROBE).then(function (p) {
+          var extra = ((p.out || '') + (p.err || '')).replace(/\r/g, '').trim();
+          logEl.className = '';
+          logEl.textContent = '状态读取失败（退出码 ' + r.code + '）\n' +
+            (why ? why + '\n\n' : '') + '—— 环境探测 ——\n' + (extra || '（探测器也没有输出，可能 root 权限没给到 WebUI）');
+          return false;
+        });
       }
       render(parseState(r.out));
       return true;
@@ -299,7 +330,7 @@
   }
 
   function setDisabled(v) {
-    ['save', 'start', 'stop', 'restart', 'refresh', 'reload'].forEach(function (id) {
+    ['save', 'start', 'stop', 'restart', 'refresh', 'reload', 'diag', 'export', 'auto'].forEach(function (id) {
       $(id).disabled = v;
     });
   }
@@ -316,6 +347,49 @@
   $('restart').addEventListener('click', function () { act('restart', '重启'); });
   $('refresh').addEventListener('click', function () { refresh().then(function (ok) { if (ok) { loadLog(); } }); });
   $('reload').addEventListener('click', loadLog);
+
+  // 开机自启开关：直接切配置文件里的状态，不需要重启
+  autoEl.addEventListener('change', function () {
+    var on = autoEl.checked;
+    if (running) { autoEl.checked = !on; return; }
+    act('autostart ' + (on ? 'on' : 'off'), '开机自启');
+  });
+
+  // 诊断：环境、进程、DNS、最近日志一次性打出来
+  $('diag').addEventListener('click', function () {
+    if (running) { return; }
+    running = true;
+    setDisabled(true);
+    showBusy('诊断中…');
+    o2p('diag').then(function (r) {
+      running = false;
+      setDisabled(false);
+      showBusy('');
+      var text = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
+      logEl.className = text ? '' : 'empty';
+      logEl.textContent = text || '诊断没有输出（退出码 ' + r.code + '）';
+      logEl.scrollTop = 0;
+    });
+  });
+
+  // 导出：写到 /sdcard/Download，路径用 toast 告诉用户
+  $('export').addEventListener('click', function () {
+    if (running) { return; }
+    running = true;
+    setDisabled(true);
+    showBusy('导出中…');
+    o2p('export').then(function (r) {
+      running = false;
+      setDisabled(false);
+      showBusy('');
+      var text = ((r.out || '') + (r.err || '')).replace(/\r/g, '').trim();
+      var line = text.split('\n').pop();
+      toast(line || ('导出失败（退出码 ' + r.code + '）'));
+      logEl.className = text ? '' : 'empty';
+      logEl.textContent = text || '导出没有输出（退出码 ' + r.code + '）';
+      logEl.scrollTop = 0;
+    });
+  });
 
   $('mgmt').addEventListener('click', function () {
     // ksu_download 暴露 openExternal（系统浏览器打开）；老版本管理器退回 am start
