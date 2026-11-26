@@ -43,12 +43,20 @@ jobs:
           echo "ver=$ver" >> "$GITHUB_OUTPUT"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
+      - name: 取模块修订号
+        id: rev
+        run: |
+          # 上游版本没变、但模块脚本/界面改过时，靠它发出新包。改模块就 module/rev +1
+          rev=$(tr -dc '0-9' < module/rev)
+          echo "rev=${rev:-1}" >> "$GITHUB_OUTPUT"
+          echo "模块修订号: r${rev:-1}"
+
       - name: 检查是否已发布
         id: check
         run: |
-          if gh release view "v${{ steps.v.outputs.ver }}" >/dev/null 2>&1; then
+          if gh release view "v${{ steps.v.outputs.ver }}-r${{ steps.rev.outputs.rev }}" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "v${{ steps.v.outputs.ver }} 已存在，跳过"
+            echo "v${{ steps.v.outputs.ver }}-r${{ steps.rev.outputs.rev }} 已存在，跳过"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -79,10 +87,10 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
-          gh release create "v${{ steps.v.outputs.ver }}" \
+          gh release create "v${{ steps.v.outputs.ver }}-r${{ steps.rev.outputs.rev }}" \
             "openp2p-${{ steps.v.outputs.ver }}-module.zip" \
-            --title "openp2p ${{ steps.v.outputs.ver }} · arm64 模块" \
-            --notes "自动打包自 openp2p 官方 Android arm64 客户端 ${{ steps.v.outputs.ver }}。
+            --title "openp2p ${{ steps.v.outputs.ver }} · arm64 模块 · r${{ steps.rev.outputs.rev }}" \
+            --notes "自动打包自 openp2p 官方 Android arm64 客户端 ${{ steps.v.outputs.ver }}，模块修订号 r${{ steps.rev.outputs.rev }}。
 
           **安装**：Magisk / KernelSU 里刷入 zip，重启。
 

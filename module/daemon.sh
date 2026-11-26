@@ -63,6 +63,10 @@ build_args() {
 # 谁启动守护，谁就清掉上次的停止标记
 rm -f "$STOPF"
 echo $$ > "$PIDF"
+# 手机内存吃紧时 LMK 会挑 oom_score 高的先杀。客户端是常驻的，被静默 SIGKILL 掉
+# 日志里什么都不留（09-27 那次就是：17:47:59 还在 init，下一秒进程没了，20 秒后才被拉起）。
+# -1000 = 不参与评分，root 才有权限。
+echo -1000 > /proc/$$/oom_score_adj 2>/dev/null
 
 while [ ! -f "$STOPF" ]; do
     cd "$DATA" || exit 1
@@ -73,13 +77,16 @@ while [ ! -f "$STOPF" ]; do
     echo "$(date '+%F %T') 启动: ./openp2p $ARGS" >> "$SUPLOG"
     # 起来 8 秒后再刷一次模块列表的状态行（那时 pidof 才看得见）
     ( sleep 8; desc ) &
-    ./openp2p $ARGS
+    ./openp2p $ARGS &
+    CPID=$!
+    echo -1000 > "/proc/$CPID/oom_score_adj" 2>/dev/null
+    wait "$CPID"
     rc=$?
 
     [ -f "$STOPF" ] && break
-    echo "$(date '+%F %T') openp2p 退出（code $rc），20 秒后拉起" >> "$SUPLOG"
+    echo "$(date '+%F %T') openp2p 退出（code $rc），5 秒后拉起" >> "$SUPLOG"
     desc
-    sleep 20
+    sleep 5
 done
 
 rm -f "$PIDF"

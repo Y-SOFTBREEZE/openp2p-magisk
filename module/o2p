@@ -143,6 +143,33 @@ status() {
     echo "本地规则 : ${apps:-0} 条（控制台下发的规则不写进配置文件）"
 }
 
+# 内网 IP：客户端上报给服务器的是「到服务器那条路由上的源地址」，
+# 所以这里也用路由查，而不是猜第一块网卡。开着 Clash 时默认路由挂在 tun 上
+# （源地址是代理的假 IP），跳过它再看物理网卡。
+lan_ip() {
+    for host in 223.5.5.5 119.29.29.29; do
+        ip=$(ip -4 route get "$host" 2>/dev/null | sed -n 's/.* src \([0-9][0-9.]*\).*/\1/p' | head -n1)
+        case "$ip" in 198.18.*|172.19.0.*) ip= ;; esac
+        [ -n "$ip" ] && { echo "$ip"; return 0; }
+    done
+    dev=$(ip -4 route show default 2>/dev/null | sed -n 's/.*dev \([^ ]*\).*/\1/p' | grep -v '^tun' | head -n1)
+    [ -n "$dev" ] || return 0
+    ip -4 addr show dev "$dev" 2>/dev/null | sed -n 's/.*inet \([0-9][0-9.]*\)\/.*/\1/p' | head -n1
+}
+
+# 公网 IPv4 / IPv6：客户端在 INFO 级别打过一行
+#   hasIPv4:0, UPNP:0, NAT type:2, publicIP:<v4>, IPv6:<v6>
+# 这两个值就是它登录时用 ?ipv4=&ipv6= 报给服务器的，跟控制台设备页显示的完全一致。
+# 日志按分钟级轮转到 .0，两个都翻一遍，取最后一条。
+net_info() {
+    f="$DATA/log/openp2p.log.0 $DATA/log/openp2p.log"
+    line=$(tail -n 400 $f 2>/dev/null | grep -a 'publicIP:' | tail -n1)
+    pub4=$(printf '%s' "$line" | sed -n 's/.*publicIP:\([^,]*\), IPv6:.*/\1/p' | tr -d ' ')
+    pub6=$(printf '%s' "$line" | sed -n 's/.*IPv6:[[:space:]]*\([^[:space:]]*\).*/\1/p')
+    # IPv6 中途变了只有这行会更新
+    [ -n "$pub6" ] || pub6=$(tail -n 400 $f 2>/dev/null | grep -a 'refreshIPv6 change:' | tail -n1 | sed 's/.*---> //' | tr -d ' \r')
+}
+
 # 给 WebUI 用的机器可读输出，每行 key=value。
 # 第一行固定 ok=1：界面靠它判断「脚本本身跑通没有」，跟业务状态无关
 state() {
@@ -160,10 +187,15 @@ state() {
     echo "node=$(field Node)"
     tk=$(field Token)
     echo "token=$tk"
-    echo "token_masked=$(printf '%s' "$tk" | sed 's/^\([0-9]\{4\}\)[0-9]*\([0-9]\{4\}\)$/\1…\2/')"
     echo "sb=$(field ShareBandwidth)"
     echo "autostart=$(autostart_state)"
     echo "insecure=$(field TLSInsecureSkipVerify)"
+    net_info
+    echo "lan=$(lan_ip)"
+    echo "pub4=$pub4"
+    echo "pub6=$pub6"
+    # 折叠状态下露一行日志，界面不至于空着
+    echo "last=$(tail -n 1 "$DATA/log/openp2p.log" 2>/dev/null | tr -d '\r')"
     apps=$(grep -c '"AppName"' "$CFG" 2>/dev/null)
     echo "rules=${apps:-0}"
     echo "cfg=$CFG"
@@ -343,7 +375,10 @@ diag() {
     echo "停止标记 : $([ -f "$DATA/run/stopped" ] && echo '有（上次手动停止）' || echo 无)"
     echo
     echo "== 进程 =="
-    echo "客户端 : $(running || echo 无)"
+    p=$(running)
+    oom=
+    [ -n "$p" ] && oom=" oom_score_adj=$(cat "/proc/$p/oom_score_adj" 2>/dev/null)"
+    echo "客户端 : ${p:-无}$oom"
     echo "守护   : $(daemon_pid || echo 无)"
     echo
     echo "== DNS =="

@@ -9,7 +9,10 @@
     --bg:#f4f5f7; --card:#ffffff; --fg:#1a1c20; --dim:#6b7280;
     --line:#e5e7eb; --field:#f7f8fa;
     --acc:#4f6ef7; --acc-fg:#ffffff;
-    --on:#22c55e; --off:#b6bac1;
+    --on:#22c55e; --off:#c3c7ce;
+    --ok-fg:#15803d; --ok-bg:#e9f9ef; --ok-bd:#bfe8d0;
+    --bad-fg:#dc2626; --bad-bg:#fdecec; --bad-bd:#f5c8c8;
+    --alt-fg:#4f6ef7; --alt-bg:#eef1fe; --alt-bd:#d6defd;
     --code-bg:#f6f7f9; --code-fg:#31343a;
     --warn:#d97706;
   }
@@ -19,6 +22,9 @@
       --line:#2a2d33; --field:#14161a;
       --acc:#5b78ff; --acc-fg:#ffffff;
       --on:#34d399; --off:#4b5058;
+      --ok-fg:#34d399; --ok-bg:rgba(52,211,153,.12); --ok-bd:rgba(52,211,153,.30);
+      --bad-fg:#f87171; --bad-bg:rgba(248,113,113,.12); --bad-bd:rgba(248,113,113,.28);
+      --alt-fg:#8fa2ff; --alt-bg:rgba(91,120,255,.14); --alt-bd:rgba(91,120,255,.30);
       --code-bg:#0b0c0e; --code-fg:#c8ccd2;
       --warn:#fbbf24;
     }
@@ -41,7 +47,7 @@
   .top{display:flex;align-items:center;justify-content:space-between}
   .state{display:flex;align-items:center;min-width:0}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--off);margin-right:9px;flex:none}
-  .dot.on{background:var(--on);box-shadow:0 0 0 4px color-mix(in srgb,var(--on) 18%,transparent)}
+  .dot.on{background:var(--on);box-shadow:0 0 0 4px rgba(52,211,153,.18)}
   .state b{font-size:15px;font-weight:600}
   .auto{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
 
@@ -54,47 +60,89 @@
   .sw input:checked + i::after{transform:translateX(19px)}
   .sw input:disabled + i{opacity:.45}
 
-  .node{margin:10px 0 3px;font-size:17px;font-weight:600;letter-spacing:.2px;
+  .node{margin:10px 0 2px;font-size:17px;font-weight:600;letter-spacing:.2px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .node.dim{color:var(--dim);font-weight:500}
-  .meta{display:flex;align-items:center;font-size:12.5px;color:var(--dim);
-        font-variant-numeric:tabular-nums;letter-spacing:.2px}
-  .meta .sep{margin:0 7px;opacity:.6}
-  .meta .warn{color:var(--warn)}
+  .meta{font-size:12.5px;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.2px;min-height:1px}
+
+  /* 网络信息：点一下复制 */
+  .net{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+  .cell{position:relative;display:block;text-align:left;padding:9px 20px 9px 10px;border:0;
+        border-radius:11px;background:var(--field);color:var(--fg);
+        font-family:inherit;cursor:pointer;transition:opacity .12s}
+  .cell:active{opacity:.6}
+  .cell.wide{grid-column:1 / -1}
+  .cell .k{display:block;font-size:11px;color:var(--dim);letter-spacing:.2px}
+  .cell .v{display:block;margin-top:1px;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;
+           overflow-wrap:anywhere}
+  .cell.empty .v{color:var(--dim)}
+  .cp{position:absolute;right:8px;top:8px;color:var(--dim);opacity:.55}
+  .cell.empty .cp{display:none}
 
   .btns{display:flex;gap:8px;margin-top:14px}
   .btn{
-    flex:1 1 0;min-width:0;height:42px;padding:0 10px;
-    border-radius:11px;border:1px solid var(--line);background:var(--field);color:var(--fg);
+    flex:1 1 0;min-width:0;height:44px;padding:0 10px;
+    border-radius:12px;border:1px solid var(--line);background:var(--field);color:var(--fg);
     font-size:14px;font-weight:500;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:5px;
+    display:flex;align-items:center;justify-content:center;gap:6px;
     transition:opacity .15s,transform .06s;font-family:inherit;
   }
   .btn:active{transform:scale(.985)}
-  .btn[disabled]{opacity:.4;pointer-events:none}
+  .btn[disabled]{opacity:.35;pointer-events:none}
   .btn.primary{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+  .btn.start{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok-fg)}
+  .btn.stop{background:var(--bad-bg);border-color:var(--bad-bd);color:var(--bad-fg)}
+  .btn.restart{background:var(--alt-bg);border-color:var(--alt-bd);color:var(--alt-fg)}
 
-  .tokenrow{display:flex;gap:8px}
+  /* token */
+  .tkrow{display:flex;gap:8px}
+  .tkin{position:relative;flex:1 1 auto;min-width:0;display:flex}
   input{
-    flex:1 1 auto;min-width:0;height:46px;padding:0 13px;border-radius:12px;
+    flex:1 1 auto;min-width:0;height:46px;padding:0 44px 0 13px;border-radius:12px;
     border:1px solid var(--line);background:var(--field);color:var(--fg);
     font:15px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.4px;
     outline:none;-webkit-appearance:none;
   }
+  input[type=password]{letter-spacing:2px}
   input:focus{border-color:var(--acc)}
   input::placeholder{color:var(--dim);font-family:system-ui,sans-serif;letter-spacing:0}
-  .tokenrow .btn{flex:none;width:80px;height:46px}
+  .tkrow .btn{flex:none;width:80px;height:46px}
+  .eye{position:absolute;right:2px;top:2px;width:40px;height:42px;border:0;background:transparent;
+       color:var(--dim);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .eye .e2{display:none}
+  .eye.on .e1{display:none}
+  .eye.on .e2{display:block}
+
+  /* 管理页 */
+  .linkbtn{display:flex;align-items:center;gap:11px;width:100%;padding:13px 15px;border:0;
+           background:var(--card);border-radius:16px;color:var(--fg);text-align:left;
+           font:600 15px/1 inherit;font-family:inherit;cursor:pointer;
+           margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 1px 8px rgba(0,0,0,.03)}
+  .linkbtn:active{opacity:.75}
+  .linkbtn .lbl{flex:1}
+  .linkbtn .chev{color:var(--alt-fg);font-size:15px;line-height:1;display:inline-block}
+
+  .ico{width:30px;height:30px;border-radius:9px;flex:none;
+       display:flex;align-items:center;justify-content:center;
+       background:var(--field);color:var(--dim)}
+  .ico.acc{background:var(--alt-bg);color:var(--alt-fg)}
 
   .list{padding:2px 16px}
-  .rowbtn{display:flex;align-items:center;justify-content:space-between;width:100%;height:52px;
+  .rowbtn{display:flex;align-items:center;gap:11px;width:100%;height:52px;
           padding:0;border:0;background:none;color:var(--fg);
-          font:500 14.5px/1 inherit;font-family:inherit;cursor:pointer}
-  .rowbtn + .rowbtn{border-top:1px solid var(--line)}
+          font:500 14.5px/1 inherit;font-family:inherit;cursor:pointer;text-align:left}
+  .rowbtn .lbl{flex:1}
   .rowbtn .chev{color:var(--dim);font-size:15px;line-height:1;display:inline-block;
                 transition:transform .15s}
   .rowbtn[aria-expanded="true"] .chev{transform:rotate(90deg)}
+
+  .preview{margin:-2px 0 12px;padding-left:41px;
+           font:11.5px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--dim);
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+  .preview.empty{font-family:system-ui,sans-serif;font-size:12px}
+
   .logwrap{padding:0 0 14px}
-  .tools{display:flex;gap:2px;margin:-2px -6px 8px}
+  .tools{display:flex;gap:2px;margin:-2px -6px 8px;padding-left:41px}
   .mini{border:0;background:transparent;color:var(--acc);font:13px/1 inherit;font-family:inherit;
         padding:6px;cursor:pointer}
   .mini[disabled]{opacity:.4;pointer-events:none}
@@ -121,33 +169,72 @@
   <section class="card">
     <div class="top">
       <div class="state"><i class="dot" id="dot"></i><b id="runText">读取中</b></div>
-      <div class="auto">开机自启
-        <label class="sw"><input type="checkbox" id="auto"><i></i></label>
-      </div>
+      <label class="auto">开机自启
+        <span class="sw"><input type="checkbox" id="auto"><i></i></span>
+      </label>
     </div>
     <div class="node dim" id="node">—</div>
-    <div class="meta">
-      <span id="token">—</span>
-      <span class="sep" id="sep" hidden>·</span>
-      <span id="sb"></span>
+    <div class="meta" id="meta"></div>
+
+    <div class="net">
+      <button class="cell" id="c-lan" type="button">
+        <span class="k">内网 IP</span><span class="v">—</span>
+        <svg class="cp" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H6a1 1 0 0 0-1 1v9"/></svg>
+      </button>
+      <button class="cell" id="c-pub4" type="button">
+        <span class="k">公网 IPv4</span><span class="v">—</span>
+        <svg class="cp" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H6a1 1 0 0 0-1 1v9"/></svg>
+      </button>
+      <button class="cell wide" id="c-pub6" type="button">
+        <span class="k">IPv6</span><span class="v">—</span>
+        <svg class="cp" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H6a1 1 0 0 0-1 1v9"/></svg>
+      </button>
     </div>
+
     <div class="btns">
-      <button class="btn" id="start">启动</button>
-      <button class="btn" id="stop">停止</button>
-      <button class="btn" id="restart">重启</button>
+      <button class="btn start" id="start">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6L19 12z"/></svg>
+        <span>启动</span>
+      </button>
+      <button class="btn stop" id="stop">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.4"/></svg>
+        <span>停止</span>
+      </button>
+      <button class="btn restart" id="restart">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11a8.5 8.5 0 1 0-2.5 6.4"/><path d="M20.5 4.5V11H14"/></svg>
+        <span>重启</span>
+      </button>
     </div>
   </section>
 
-  <section class="card tokenrow">
-    <input id="tk" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="token">
+  <section class="card tkrow">
+    <span class="tkin">
+      <input id="tk" type="password" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="token">
+      <button class="eye" id="eye" type="button" aria-label="显示 token">
+        <svg class="e1" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M2.2 12S5.8 5.6 12 5.6 21.8 12 21.8 12 18.2 18.4 12 18.4 2.2 12 2.2 12z"/><circle cx="12" cy="12" r="3.1"/></svg>
+        <svg class="e2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M2.2 12S5.8 5.6 12 5.6 21.8 12 21.8 12 18.2 18.4 12 18.4 2.2 12 2.2 12z"/><circle cx="12" cy="12" r="3.1"/><path d="M4 4l16 16"/></svg>
+      </button>
+    </span>
     <button class="btn primary" id="save">保存</button>
   </section>
 
+  <button class="linkbtn" id="mgmt" type="button">
+    <span class="ico acc">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.8"/><path d="M3.2 12h17.6"/><path d="M12 3.2c2.6 3.1 2.6 14.5 0 17.6-2.6-3.1-2.6-14.5 0-17.6z"/></svg>
+    </span>
+    <span class="lbl">管理页</span>
+    <span class="chev">↗</span>
+  </button>
+
   <section class="card list">
-    <button class="rowbtn" id="mgmt"><span>管理页</span><span class="chev">↗</span></button>
     <button class="rowbtn" id="logtoggle" aria-expanded="false" aria-controls="logwrap">
-      <span>运行日志</span><span class="chev">›</span>
+      <span class="ico">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.2" width="18.4" height="15.6" rx="3"/><path d="M7.2 10l2.6 2.4-2.6 2.4"/><path d="M12.6 15h4.2"/></svg>
+      </span>
+      <span class="lbl">运行日志</span>
+      <span class="chev">›</span>
     </button>
+    <div class="preview" id="preview" hidden></div>
     <div class="logwrap" id="logwrap" hidden>
       <div class="tools">
         <button class="mini" id="reload">刷新</button>
@@ -178,11 +265,10 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var dot = $('dot'), runText = $('runText'), ver = $('ver'), node = $('node'),
-      token = $('token'), sep = $('sep'), sb = $('sb'), logEl = $('log'),
-      tk = $('tk'), busy = $('busy'), autoEl = $('auto'),
-      logWrap = $('logwrap'), logToggle = $('logtoggle');
+      meta = $('meta'), logEl = $('log'), tk = $('tk'), busy = $('busy'), autoEl = $('auto'),
+      logWrap = $('logwrap'), logToggle = $('logtoggle'), preview = $('preview');
 
-  var isOn = false, logOpen = false;
+  var isOn = false, logOpen = false, lastLine = '';
 
   function hasKsu() {
     return typeof window.ksu !== 'undefined' && typeof window.ksu.exec === 'function';
@@ -261,6 +347,44 @@
     return o;
   }
 
+  // 点一下复制。WebUI 是 https 源，clipboard API 一般可用；不行就退回 textarea
+  function copy(text) {
+    if (!text) { return; }
+    function legacy() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      toast(ok ? '已复制' : '复制失败');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast('已复制'); }, legacy);
+    } else {
+      legacy();
+    }
+  }
+
+  function setCell(id, v) {
+    var el = $(id);
+    var val = (v && v !== 'undefined' && v !== 'null') ? v : '';
+    el.dataset.v = val;
+    el.querySelector('.v').textContent = val || '—';
+    el.classList.toggle('empty', !val);
+  }
+
+  function setPreview(text) {
+    lastLine = (text || '').trim();
+    if (logOpen) { preview.hidden = true; return; }
+    preview.hidden = false;
+    preview.textContent = lastLine || '还没有日志';
+    preview.classList.toggle('empty', !lastLine);
+  }
+
   function render(s) {
     isOn = s.run === '1';
     dot.className = 'dot' + (isOn ? ' on' : '');
@@ -271,14 +395,16 @@
     node.className = 'node' + (s.node ? '' : ' dim');
     node.title = s.node || '';
 
-    var t = s.token || '';
-    var unset = !t || t === '0';
-    token.textContent = unset ? 'token 未配置' : 'token ' + (s.token_masked || t);
-    token.className = unset ? 'warn' : '';
+    setCell('c-lan', s.lan);
+    setCell('c-pub4', s.pub4);
+    setCell('c-pub6', s.pub6);
 
-    sb.textContent = s.sb ? '共享 ' + s.sb + ' Mbps' : '';
-    sep.hidden = !s.sb;
+    meta.textContent = s.sb ? '共享 ' + s.sb + ' Mbps' : '';
 
+    var set = s.token && s.token !== '0';
+    tk.placeholder = set ? 'token 已配置' : 'token';
+
+    setPreview(s.last);
     autoEl.checked = s.autostart !== '0';
     syncActions();
   }
@@ -337,6 +463,7 @@
   function openLog() {
     logOpen = true;
     logWrap.hidden = false;
+    preview.hidden = true;
     logToggle.setAttribute('aria-expanded', 'true');
   }
 
@@ -344,7 +471,12 @@
     logOpen = !logOpen;
     logWrap.hidden = !logOpen;
     logToggle.setAttribute('aria-expanded', logOpen ? 'true' : 'false');
-    if (logOpen) { loadLog(); }
+    if (logOpen) {
+      preview.hidden = true;
+      loadLog();
+    } else {
+      setPreview(lastLine);
+    }
   }
 
   var running = false;
@@ -373,6 +505,18 @@
   }
 
   logToggle.addEventListener('click', toggleLog);
+  preview.addEventListener('click', toggleLog);
+
+  ['c-lan', 'c-pub4', 'c-pub6'].forEach(function (id) {
+    $(id).addEventListener('click', function () { copy(this.dataset.v); });
+  });
+
+  $('eye').addEventListener('click', function () {
+    var show = tk.type === 'password';
+    tk.type = show ? 'text' : 'password';
+    $('eye').classList.toggle('on', show);
+    tk.focus();
+  });
 
   $('save').addEventListener('click', function () {
     var v = tk.value.trim();

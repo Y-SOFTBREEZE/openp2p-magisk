@@ -6,10 +6,12 @@
 
 模块带 WebUI。KernelSU 管理器里进入 模块 → OpenP2P → 「打开」，就是这个界面：
 
-- 状态、机型名、token（打码）、共享带宽；右上角是**开机自启开关**（默认开）
-- 启动 / 停止 / 重启，当前状态下用不了的那个自动置灰
-- token 一个输入框加一个「保存」
-- 「管理页」跳系统浏览器打开 console.openp2p.cn，「运行日志」默认折叠，展开后有刷新 / 清空 / 诊断 / 导出
+- 状态、机型名、共享带宽；右上角是**开机自启开关**（默认开）
+- 网络信息：内网 IP、公网 IPv4、IPv6（跟控制台设备页显示的是同一份数据，取自客户端日志里的 `publicIP:` / `IPv6:`），**点一下复制**
+- 启动 / 停止 / 重启，带图标和配色，当前状态下用不了的那个自动置灰
+- token 输入框是密码型（圆点），右边小眼睛点开才显示明文；已配置过时占位符写「token 已配置」，不显示 token 本身
+- 「管理页」整行跳系统浏览器打开 console.openp2p.cn
+- 「运行日志」默认折叠，折叠时露一行最新日志；展开后有刷新 / 清空 / 诊断 / 导出
 
 模块列表里那一行描述会跟着状态变：`[运行中] Xiaomi 14 · v3.25.14`、`[已停止]`、`[未配置 Token]`，不用点进去也知道跑没跑。
 
@@ -21,7 +23,7 @@
 
 官方分发包里的 `openp2p-<ver>.android-arm64.tar.gz` 就是一个 Go 静态二进制（`GOOS=android`、`GOARCH=arm64`、`CGO_ENABLED=0`，10 MB），P2P 打通、握手、转发全在这个二进制里。官方 APK 只是 Kotlin 外壳加 gomobile 绑定，界面只有登录页。
 
-模块把二进制放进模块目录，`/data/adb/openp2p/openp2p` 软链过去，开机由 `service.sh` 拉起，`daemon.sh` 负责挂了 20 秒重拉。配置只有一件事要做：填 token。转发规则在 [console.openp2p.cn](https://console.openp2p.cn) 网页端按节点配置，客户端登录后服务器自动下发，这也是官方 App 唯一起作用的地方。
+模块把二进制放进模块目录，`/data/adb/openp2p/openp2p` 软链过去，开机由 `service.sh` 拉起，`daemon.sh` 负责挂了 5 秒重拉。配置只有一件事要做：填 token。转发规则在 [console.openp2p.cn](https://console.openp2p.cn) 网页端按节点配置，客户端登录后服务器自动下发，这也是官方 App 唯一起作用的地方。
 
 ## 支持范围
 
@@ -50,6 +52,8 @@ su -c o2p status
 
 节点名自动取机型名（`ro.product.marketname`，例如 `Xiaomi 14`），它就是控制台设备列表里显示的名字。同一型号两台设备会撞名，改成 `su -c o2p node <8-31 个字符>` 换一个即可。
 
+**改节点名 = 在控制台换一台设备。** 服务端是按节点名做设备标识的（`core/config.go` 里的 `NodeNameToID`），名字一变就是新设备：旧设备留在列表里变成离线，挂在它下面的转发规则不会跟过来。所以老版本留下的 `android-xxxxxx` 被自动改成机型名之后，去控制台把旧的那台删掉就行。
+
 ## 命令
 
 | 命令 | 作用 |
@@ -69,13 +73,29 @@ su -c o2p status
 
 `o2p stop` 会写一个停止标记，之后开机不会自启；`o2p start` 清掉标记，恢复自启。想让机器重启后不自动跑、但又不想手动停，用 `o2p autostart off`（或界面上的开关）——它只影响下次开机的行为。
 
-## 会不会被系统杀掉
+## 会不会被系统杀掉 / 会不会掉线
 
-不会。客户端是 root 起的原生进程，不是 App，不受电池优化、后台限制、`LMK` 的 App 优先级那一套管。守护循环 `daemon.sh` 会盯着它，进程没了 20 秒后重新拉起，日志里会写一行「openp2p 退出（code …），20 秒后拉起」。真要看是不是活着：
+**会被 LMK 杀掉，但拉得回来。** 实测过一次：客户端在 `P2PNetwork init` 中间直接消失，日志里连一行错误都没有（被 `SIGKILL` 只能是这样），守护 20 秒后才把它拉起来。所以现在 `daemon.sh` 给守护自己和客户端都写 `oom_score_adj = -1000`（root 才有权限，等于不参与 LMK 打分），重启间隔也从 20 秒缩到 5 秒。
+
+**客户端自己也会周期性断开重连，这是它本来的行为。** `core/p2pnetwork.go` 的 `readLoop` 里超时是硬编码的：60 秒收不到服务器任何消息就 `close` + 重连。日志长这样：
+
+```
+ERROR ReadMessage timeout after 1m0s
+INFO  got restart channel
+INFO  P2PNetwork init start
+INFO  login ok. user=softbreeze, node=...
+```
+
+从断到重新登录大约 15–20 秒（还要重做一遍 NAT 探测），**这段时间控制台就是「离线」**。运营商 CGNAT 会改映射、空闲连接被中间设备回收，都会触发；判断是不是走了代理，看日志里 DNS 解析出来的地址——`198.18.x.x` 是 Clash 的 fake-ip，真地址是 `124.221.80.223`。
+
+所以控制台偶尔闪一下离线是正常的。要是长时间回不来：
 
 ```sh
-su -c o2p status      # 进程 : 运行中 (pid …)
+su -c o2p status   # 进程在不在
+su -c o2p log 100  # 是不是卡在 ReadMessage timeout 循环，还是根本没 login ok
 ```
+
+真要看是不是活着：`o2p status` 里那一行「进程 : 运行中 (pid …)」，`o2p diag` 还会顺带打出 `oom_score_adj`。
 
 唯一会让它停下的：模块被禁用/卸载、`o2p stop`、或把「开机自启」关掉后重启。
 
@@ -134,11 +154,13 @@ su -c o2p status      # 进程 : 运行中 (pid …)
 `.github/workflows/build.yml` 每天 19:00 UTC（北京 03:00）跑一次：
 
 1. 调 `https://api.openp2p.cn:27183/api/v1/update?fromver=0&os=android&arch=arm64`，返回的 URL 里带版本号
-2. 跟已有 Release 比，同版本直接跳过
+2. 跟已有 Release 比，同版本同修订号直接跳过
 3. 有新版本就下载 tar.gz、解出二进制、用 `scripts/build.sh` 打成模块 zip
-4. 发 Release（tag `v<版本>`），同时上传 Actions artifact
+4. 发 Release（tag `v<版本>-r<修订号>`），同时上传 Actions artifact
 
-手动跑：Actions → build-module → Run workflow，可以填版本号。改了模块脚本（包括界面）想重新发同一版本，先删掉对应 Release 再触发。
+**模块修订号。** 上游版本不动、只改了脚本或界面时，光推代码发不出新包（第 2 步会跳过）。所以模块有自己的一套修订号，写在 `module/rev` 里（纯数字）：**改完模块内容把它加 1 再推**，tag 就变成 `v3.25.14-r3`，`module.prop` 里的 `version` 也会带上 `-r3`，装到手机上能看出刷的是哪一版。`versionCode` = `版本号压成 6 位 × 100 + 修订号`。
+
+手动跑：Actions → build-module → Run workflow，可以填版本号（修订号仍从 `module/rev` 读）。
 
 本地构建：
 
