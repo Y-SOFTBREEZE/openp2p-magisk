@@ -315,10 +315,30 @@ set_node() {
     fi
     # 定了就不让开机时的自动命名改回去；改成老名字（android-e06696）等于把控制台那台旧设备认回来
     echo 1 > "$DATA/node_locked"
+
+    # 客户端登录成功后会用服务端返回的节点名覆盖本地配置（core/p2pnetwork.go 的 MsgLogin
+    # 分支：setNode(rsp.Node) + save()）。名字在服务端不可用时会被塞一个随机后缀，
+    # 所以必须等 login ok 再读回真实名字，否则界面显示的是一秒钟前的假名字。
+    before=$(wc -l < "$DATA/log/openp2p.log" 2>/dev/null | tr -d ' ')
+    [ -n "$before" ] || before=0
     stop >/dev/null
     sleep 1
     start >/dev/null
-    echo "已改名：$name（控制台按名字认设备，这次算一台新的）"
+
+    i=0
+    while [ "$i" -lt 10 ]; do
+        sleep 1
+        i=$((i + 1))
+        [ -n "$(running)" ] || break
+        tail -n +"$((before + 1))" "$DATA/log/openp2p.log" 2>/dev/null | grep -q "login ok" && break
+    done
+
+    real=$(field Node)
+    if [ "$real" = "$name" ]; then
+        echo "已改名为 $real"
+    else
+        echo "服务端没接受「$name」，改成了 $real（节点名要唯一，换个更特别的）"
+    fi
 }
 
 set_autostart() {

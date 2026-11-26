@@ -30,6 +30,8 @@
     }
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* 有 display 的元素会盖掉 hidden 属性自带的 display:none */
+  [hidden]{display:none!important}
   body{
     margin:0; padding:calc(18px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
     background:var(--bg); color:var(--fg);
@@ -60,9 +62,21 @@
   .sw input:checked + i::after{transform:translateX(19px)}
   .sw input:disabled + i{opacity:.45}
 
-  .node{margin:10px 0 2px;font-size:17px;font-weight:600;letter-spacing:.2px;
+  /* 节点名：平时是文本 + 铅笔，点铅笔原地变成输入框 */
+  .nrow{display:flex;align-items:center;gap:8px;margin:10px 0 2px}
+  .node{flex:1 1 auto;min-width:0;margin:0;font-size:17px;font-weight:600;letter-spacing:.2px;
         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .node.dim{color:var(--dim);font-weight:500}
+  .pen{width:30px;height:30px;flex:none;border:0;border-radius:9px;background:var(--field);
+       color:var(--dim);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .pen:active{opacity:.6}
+  #nm{width:auto;flex:1 1 0;min-width:0;height:38px;padding:0 10px;
+      font:600 16px/1 system-ui,sans-serif;letter-spacing:.2px}
+  .nbtn{width:38px;height:38px;flex:none;border-radius:11px;border:1px solid var(--line);
+        background:var(--field);color:var(--fg);display:flex;align-items:center;justify-content:center;
+        cursor:pointer;transition:opacity .12s}
+  .nbtn.ok{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok-fg)}
+  .nbtn:active{opacity:.7}
   .meta{font-size:12.5px;color:var(--dim);font-variant-numeric:tabular-nums;letter-spacing:.2px;min-height:1px}
 
   /* 网络信息：点一下复制 */
@@ -192,7 +206,21 @@
         <span class="sw"><input type="checkbox" id="auto"><i></i></span>
       </label>
     </div>
-    <div class="node dim" id="node">—</div>
+    <div class="nrow" id="nrow">
+      <div class="node dim" id="node">—</div>
+      <button class="pen" id="pen" type="button" aria-label="修改节点名">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14.5 6.5l3 3"/></svg>
+      </button>
+    </div>
+    <div class="nrow" id="nedit" hidden>
+      <input id="nm" type="text" maxlength="31" autocomplete="off" spellcheck="false" placeholder="节点名">
+      <button class="nbtn ok" id="nmok" type="button" aria-label="保存">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4.5 4.5L19 7"/></svg>
+      </button>
+      <button class="nbtn" id="nmno" type="button" aria-label="取消">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
     <div class="meta" id="meta"></div>
 
     <div class="net">
@@ -227,11 +255,6 @@
   </section>
 
   <section class="card sett">
-    <div class="srow">
-      <label class="slbl" for="nm">节点名</label>
-      <input id="nm" type="text" maxlength="31" autocomplete="off" spellcheck="false" placeholder="节点名">
-      <button class="sbtn" id="savenm" type="button">保存</button>
-    </div>
     <div class="srow">
       <label class="slbl" for="tk">Token</label>
       <span class="tkin">
@@ -301,6 +324,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var dot = $('dot'), runText = $('runText'), ver = $('ver'), node = $('node'),
       meta = $('meta'), logEl = $('log'), tk = $('tk'), nm = $('nm'), busy = $('busy'), autoEl = $('auto'),
+      nrow = $('nrow'), nedit = $('nedit'),
       logWrap = $('logwrap'), logToggle = $('logtoggle'), preview = $('preview');
 
   var isOn = false, logOpen = false, lastLine = '';
@@ -319,7 +343,7 @@
       }
       var name = '__o2p_cb_' + (++seq);
       var done = false;
-      var timer = setTimeout(function () { finish({ code: -1, out: '执行超时', err: '' }); }, 20000);
+      var timer = setTimeout(function () { finish({ code: -1, out: '执行超时', err: '' }); }, 30000);
 
       function finish(r) {
         if (done) { return; }
@@ -462,7 +486,7 @@
   }
 
   function setLocked(v) {
-    ['save', 'savenm', 'start', 'stop', 'restart', 'reload', 'clear', 'diag', 'export', 'auto'].forEach(function (id) {
+    ['save', 'start', 'stop', 'restart', 'reload', 'clear', 'diag', 'export', 'auto', 'pen', 'nmok', 'nmno'].forEach(function (id) {
       $(id).disabled = v;
     });
     if (!v) { syncActions(); }
@@ -595,11 +619,32 @@
     act('token ' + v, '保存').then(function () { tk.value = ''; syncEye(); });
   });
 
-  $('savenm').addEventListener('click', function () {
+  // 铅笔：原地把名字换成输入框，用 ✕ 或回车退出
+  function editNode(on) {
+    nrow.hidden = on;
+    nedit.hidden = !on;
+    if (on) {
+      nm.value = node.textContent === '未命名' ? '' : node.textContent;
+      nm.focus();
+      nm.select();
+    } else {
+      nm.blur();
+    }
+  }
+
+  $('pen').addEventListener('click', function () { editNode(true); });
+  $('nmno').addEventListener('click', function () { editNode(false); });
+
+  $('nmok').addEventListener('click', function () {
     var v = nm.value.trim();
     if (!v) { toast('先填节点名'); nm.focus(); return; }
-    if (v === (node.textContent || '')) { toast('节点名没有变化'); return; }
-    act('node ' + q(v), '改名中').then(function () { nm.blur(); });
+    if (v === node.textContent) { editNode(false); return; }
+    act('node ' + q(v), '改名中').then(function () { editNode(false); });
+  });
+
+  nm.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { $('nmok').click(); }
+    else if (e.key === 'Escape') { editNode(false); }
   });
 
   $('start').addEventListener('click', function () { act('start', '启动中'); });
