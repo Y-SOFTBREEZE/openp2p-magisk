@@ -19,6 +19,20 @@ desc() {
     [ -n "$MODDIR" ] && sh "$MODDIR/o2p" refresh-desc >/dev/null 2>&1
 }
 
+# 连接健康检查交给 o2p link（读 /proc/net/tcp 的 ESTABLISHED）。查不了就当通着，
+# 别因为脚本缺失把一个好进程杀掉。
+O2P=
+for d in /data/adb/openp2p/o2p /data/adb/modules/openp2p/o2p; do
+    [ -x "$d" ] && { O2P=$d; break; }
+done
+
+OFFF=$DATA/run/offline_since
+
+link_up() {
+    [ -n "$O2P" ] || return 0
+    "$O2P" link >/dev/null 2>&1
+}
+
 # 老配置没有这一项，补上；不补的话 -insecure 传不进去，登录会失败
 ensure_cfg() {
     [ -f "$CFG" ] || return 0
@@ -80,6 +94,38 @@ while [ ! -f "$STOPF" ]; do
     ./openp2p $ARGS &
     CPID=$!
     echo -1000 > "/proc/$CPID/oom_score_adj" 2>/dev/null
+
+    # 进程活着 ≠ 连着。每 10 秒看一眼有没有到服务端的 ESTABLISHED 连接；
+    # 客户端自己 60 秒读超时会重连，但卡在重连循环里时它不会退出，pidof 也看不出来
+    # （控制台一直离线、界面一直「运行中」）。连续 3 分钟没连接就整只重启。
+    down=0
+    up=1
+    while kill -0 "$CPID" 2>/dev/null; do
+        sleep 10
+        kill -0 "$CPID" 2>/dev/null || break
+        if link_up; then
+            down=0
+            rm -f "$OFFF"
+            if [ "$up" = 0 ]; then
+                up=1
+                desc
+            fi
+        else
+            if [ "$up" = 1 ]; then
+                up=0
+                date +%s > "$OFFF"
+                desc
+            fi
+            down=$((down + 1))
+            if [ "$down" -ge 18 ]; then
+                echo "$(date '+%F %T') 连续 $((down * 10)) 秒没有到服务端的连接，重启客户端" >> "$SUPLOG"
+                kill "$CPID" 2>/dev/null
+                sleep 3
+                kill -9 "$CPID" 2>/dev/null
+                break
+            fi
+        fi
+    done
     wait "$CPID"
     rc=$?
 
@@ -89,5 +135,5 @@ while [ ! -f "$STOPF" ]; do
     sleep 5
 done
 
-rm -f "$PIDF"
+rm -f "$PIDF" "$OFFF"
 echo "$(date '+%F %T') 守护循环结束" >> "$SUPLOG"

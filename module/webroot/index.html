@@ -50,6 +50,7 @@
   .state{display:flex;align-items:center;min-width:0}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--off);margin-right:9px;flex:none}
   .dot.on{background:var(--on);box-shadow:0 0 0 4px rgba(52,211,153,.18)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 0 4px rgba(217,119,6,.16)}
   .state b{font-size:15px;font-weight:600}
   .auto{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
 
@@ -449,10 +450,21 @@
     preview.classList.toggle('empty', !lastLine);
   }
 
+  // 断开时长：守护在断开那一刻写了个时间戳，这里只做格式化
+  function ago(v) {
+    var n = parseInt(v, 10);
+    if (isNaN(n)) { return '等待重连'; }
+    if (n < 60) { return '已断开 ' + n + ' 秒'; }
+    if (n < 3600) { return '已断开 ' + Math.floor(n / 60) + ' 分钟'; }
+    return '已断开 ' + Math.floor(n / 3600) + ' 小时';
+  }
+
   function render(s) {
     isOn = s.run === '1';
-    dot.className = 'dot' + (isOn ? ' on' : '');
-    runText.textContent = isOn ? '运行中' : '未运行';
+    // 进程活着但没连上服务端时，控制台看到的是离线，界面不能还写「运行中」
+    var up = isOn && s.conn === '1';
+    dot.className = 'dot' + (isOn ? (up ? ' on' : ' warn') : '');
+    runText.textContent = isOn ? (up ? '运行中' : '重连中') : '未运行';
     ver.textContent = s.ver ? 'v' + s.ver : '';
 
     node.textContent = s.node || '未命名';
@@ -465,7 +477,10 @@
     setCell('c-pub4', s.pub4);
     setCell('c-pub6', s.pub6);
 
-    meta.textContent = s.sb ? '共享 ' + s.sb + ' Mbps' : '';
+    var parts = [];
+    if (s.sb) { parts.push('共享 ' + s.sb + ' Mbps'); }
+    if (isOn && !up) { parts.push(ago(s.offsec)); }
+    meta.textContent = parts.join(' · ');
 
     var set = s.token && s.token !== '0';
     tk.placeholder = set ? 'token 已配置' : 'token';

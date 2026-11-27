@@ -7,6 +7,7 @@ CFG=$DATA/config.json
 PIDF=$DATA/run/supervisord.pid
 SUPLOG=$DATA/log/service.log
 AUTO=$DATA/autostart
+OFF=$DATA/run/offline_since
 
 # 二进制：优先数据目录的软链，退到模块目录（安装后未重启时软链可能是断的）
 BIN=$DATA/openp2p
@@ -71,7 +72,11 @@ refresh_desc() {
     if [ -z "$tk" ] || [ "$tk" = "0" ]; then
         s="[未配置 Token] 点模块页「打开」填写"
     elif [ -n "$(pidof openp2p)" ]; then
-        s="[运行中] $(field Node) · v$(version)"
+        if link_up; then
+            s="[运行中] $(field Node) · v$(version)"
+        else
+            s="[重连中] $(field Node) · 控制台可能显示离线"
+        fi
     else
         s="[已停止] 点「打开」可启动"
     fi
@@ -81,6 +86,31 @@ refresh_desc() {
 
 running() {
     pidof openp2p 2>/dev/null | awk '{print $1}'
+}
+
+# 进程活着 ≠ 连着。客户端断线会自己重连（readLoop 60 秒读超时），但卡在重连循环里
+# 时进程一直活着，pidof 看不出来，控制台却是离线。
+# 判据：这个进程有没有一条 ESTABLISHED 的 TCP 连到服务端端口（/proc/net/tcp 的 st=01），
+# 不依赖日志、不依赖时钟，doze 期间连接还在也算通。
+link_up() {
+    p=$(running)
+    [ -n "$p" ] || return 1
+    [ -d "/proc/$p/fd" ] || return 1
+    pt=$(field ServerPort)
+    [ -n "$pt" ] || pt=27183
+    hex=$(printf '%04X' "$pt" 2>/dev/null)
+    [ -n "$hex" ] || hex=6A2F
+    inos=$(ls -l "/proc/$p/fd" 2>/dev/null | sed -n 's/.*socket:\[\([0-9]*\)\].*/\1/p' | tr '\n' ' ')
+    # 一个 socket 都读不到说明这个 ROM 不让看 fd（hidepid 之类），判不了就别乱杀
+    [ -n "$inos" ] || return 0
+    for f in /proc/net/tcp /proc/net/tcp6; do
+        [ -r "$f" ] || continue
+        awk -v want="$inos" -v port=":$hex" '
+            BEGIN { n = split(want, a, " "); for (i = 1; i <= n; i++) w[a[i]] = 1 }
+            $4 == "01" && $3 ~ port "$" && ($10 in w) { ok = 1 }
+            END { exit !ok }' "$f" && return 0
+    done
+    return 1
 }
 
 # 守护循环（daemon.sh）还活着就返回它的 pid
@@ -124,7 +154,7 @@ start() {
         return 0
     fi
     mkdir -p "$DATA/log" "$DATA/run"
-    rm -f "$DATA/run/stopped"
+    rm -f "$DATA/run/stopped" "$OFF"
     spawn "$(daemon_path)"
     sleep 3
     if [ -n "$(running)" ]; then
@@ -141,6 +171,7 @@ stop() {
     mkdir -p "$DATA/run"
     # 先立停止标记，守护循环下一轮自己退出，避免被 20 秒后重新拉起
     touch "$DATA/run/stopped"
+    rm -f "$OFF"
     p=$(daemon_pid)
     [ -n "$p" ] && kill "$p" 2>/dev/null
     rm -f "$PIDF"
@@ -160,6 +191,7 @@ status() {
     echo "开机自启 : $([ "$(autostart_state)" = 1 ] && echo 开 || echo 关)"
     if [ -n "$(running)" ]; then
         echo "进程     : 运行中 (pid $(running))"
+        echo "连接     : $(link_up && echo 已连接 || echo 未连接/重连中)"
     else
         echo "进程     : 未运行"
     fi
@@ -207,6 +239,21 @@ state() {
     else
         echo "run=0"
         echo "pid="
+    fi
+    # 连接状态：界面靠它区分「运行中」和「重连中」，不然进程活着就一直显示运行中
+    if link_up; then
+        echo "conn=1"
+        echo "offsec="
+    else
+        echo "conn=0"
+        since=$(cat "$OFF" 2>/dev/null)
+        if [ -n "$since" ]; then
+            d=$(( $(date +%s) - since ))
+            [ "$d" -ge 0 ] || d=0
+            echo "offsec=$d"
+        else
+            echo "offsec="
+        fi
     fi
     echo "ver=$(app_version)"
     echo "mver=$(version)"
@@ -437,6 +484,9 @@ diag() {
     [ -n "$p" ] && oom=" oom_score_adj=$(cat "/proc/$p/oom_score_adj" 2>/dev/null)"
     echo "客户端 : ${p:-无}$oom"
     echo "守护   : $(daemon_pid || echo 无)"
+    if [ -n "$p" ]; then
+        echo "连接   : $(link_up && echo '已连接（ESTABLISHED 到服务端）' || echo '没连上 / 正在重连')"
+    fi
     echo
     echo "== DNS =="
     if [ -f /etc/resolv.conf ]; then
@@ -447,6 +497,12 @@ diag() {
     fi
     echo -n "解析 api.openp2p.cn: "
     ping -c 1 -W 2 api.openp2p.cn 2>&1 | sed -n 's/.*(\([0-9.]*\)).*/\1/p' | head -n1
+    # 198.18.0.0/15 是 Clash 之类代理的 fake-ip 段。走到这份地址说明流量过了代理，
+    # 代理重载配置/切节点时会掐掉长连接，控制台就表现为间歇性离线。
+    sip=$(field ServerIP)
+    case "$sip" in
+        198.18.*|198.19.*) echo "注意     : 服务端地址走的是代理 fake-ip（$sip），在 Clash 里给 openp2p.cn 加 DOMAIN-SUFFIX,DIRECT" ;;
+    esac
     echo
     echo "== 最近日志 =="
     tail -n 15 "$DATA/log/openp2p.log" 2>/dev/null || echo "（没有 openp2p.log）"
@@ -462,6 +518,7 @@ case "${1:-status}" in
     ensure-node) ensure_node ;;   # 内部用：节点名为空时生成一个
     refresh-desc) refresh_desc ;; # 内部用：模块列表的状态行
     node)       set_node "$2" ;;
+    link)       link_up ;;        # 内部用：守护判断连接是否活着，0=通 1=断
     autostart)  set_autostart "$2" ;;
     log)        show_log "$2" ;;
     clearlog)   clear_log ;;
