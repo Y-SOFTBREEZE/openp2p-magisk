@@ -497,11 +497,27 @@ diag() {
     fi
     echo -n "解析 api.openp2p.cn: "
     ping -c 1 -W 2 api.openp2p.cn 2>&1 | sed -n 's/.*(\([0-9.]*\)).*/\1/p' | head -n1
-    # 198.18.0.0/15 是 Clash 之类代理的 fake-ip 段。走到这份地址说明流量过了代理，
-    # 代理重载配置/切节点时会掐掉长连接，控制台就表现为间歇性离线。
+
+    # 198.18.0.0/15 是 Clash 之类代理的 fake-ip 段，公网不可路由。
+    # 能连上它，就说明这台手机和公网之间有一层代理在转发 —— 但代理不一定在手机上，
+    # 所以要顺着路由表看流量从哪个网口出去了。
     sip=$(field ServerIP)
     case "$sip" in
-        198.18.*|198.19.*) echo "注意     : 服务端地址走的是代理 fake-ip（$sip），在 Clash 里给 openp2p.cn 加 DOMAIN-SUFFIX,DIRECT" ;;
+        198.18.*|198.19.*)
+            echo "注意     : 服务端地址是代理 fake-ip（$sip），公网不可达，能连上说明链路上有代理在转发"
+            echo -n "走哪个网口: "
+            via=$(ip route get "$sip" 2>/dev/null | head -n1)
+            echo "${via:-（读取失败）}"
+            echo "默认路由 : $(ip route show default 2>/dev/null | head -n1)"
+            vpnif=$(ip link 2>/dev/null | sed -n 's/^[0-9]*: \([^:@]*\):.*/\1/p' | grep -Ei '^(tun|utun|ppp|wg|clash)' | tr '\n' ' ')
+            echo "VPN 接口 : ${vpnif:-无（这台手机上没跑 VPN 服务）}"
+            case "$via" in
+                *"dev tun"*|*"dev utun"*|*"dev ppp"*|*"dev wg"*)
+                    echo "代理位置 : 这台手机（流量进了 VPN 接口，在里面给 openp2p.cn 加 DIRECT）" ;;
+                *"dev wlan"*|*"dev rmnet"*|*"dev eth"*)
+                    echo "代理位置 : 不在手机 —— 流量从上面那个网口正常出去，是路由器/上游在改写 fake-ip" ;;
+            esac
+            ;;
     esac
     echo
     echo "== 最近日志 =="

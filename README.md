@@ -107,7 +107,17 @@ awk '{print "pid="$1, "ppid="$4, "pgid="$5, "sid="$6}' /proc/$(pidof openp2p)/st
 
 断开时刻由守护写在 `run/offline_since`，界面只负责格式化，所以不用解析日志里的 UTC 时间戳。
 
-**走代理是掉线的主要外因。** 日志里出现 `dns resolved api.openp2p.cn -> [198.18.x.x]` 就是 Clash 之类的 fake-ip，长连接会随代理重载配置、切节点被掐断（表现为 `close 1006 (abnormal closure)`）。在 Clash 里加一条 `DOMAIN-SUFFIX,openp2p.cn,DIRECT` 最省事；`su -c o2p diag` 结尾会直接点出这种情况。
+**走代理是掉线的主要外因。** 日志里出现 `dns resolved api.openp2p.cn -> [198.18.x.x]` 就是代理的 fake-ip（真实地址是 `124.221.80.223`，腾讯云），长连接会随代理重载配置、切节点被掐断（表现为 `close 1006 (abnormal closure)`）。
+
+要注意 **fake-ip 不一定来自手机上的 Clash**。`198.18.0.0/15` 是保留网段，公网根本不可路由；客户端却能 `login ok`，说明链路上确有一层代理在转发。这层代理可能在三个位置：
+
+| 位置 | 判定 |
+| --- | --- |
+| 手机上（Clash / v2rayNG / sing-box 的后台服务，App 界面关掉服务还在跑） | `o2p diag` 打出 VPN 接口（`tun0` 之类），且到服务端的路由走它 |
+| 同一 Wi-Fi 的路由器（OpenClash / ShellClash，或 DNS 劫持） | `o2p diag` 显示流量走 `wlan0`、本机 **没有** VPN 接口 |
+| 手机走了别人分享的热点，热点那台设备在做代理 | 同上，走 `wlan0` / `rmnet0`，没有 tun |
+
+`su -c o2p diag` 会直接打出「走哪个网口 / 默认路由 / VPN 接口 / 代理位置」四行。确认位置之后，在**那一层**给 `openp2p.cn` 加直连规则（Clash 系：`DOMAIN-SUFFIX,openp2p.cn,DIRECT`）。
 
 **客户端自己也会周期性断开重连，这是它本来的行为。** `core/p2pnetwork.go` 的 `readLoop` 里超时是硬编码的：60 秒收不到服务器任何消息就 `close` + 重连。日志长这样：
 
@@ -118,7 +128,7 @@ INFO  P2PNetwork init start
 INFO  login ok. user=softbreeze, node=...
 ```
 
-从断到重新登录大约 15–20 秒（还要重做一遍 NAT 探测），**这段时间控制台就是「离线」**。运营商 CGNAT 会改映射、空闲连接被中间设备回收，都会触发；判断是不是走了代理，看日志里 DNS 解析出来的地址——`198.18.x.x` 是 Clash 的 fake-ip，真地址是 `124.221.80.223`。
+从断到重新登录大约 15–20 秒（还要重做一遍 NAT 探测），**这段时间控制台就是「离线」**。运营商 CGNAT 会改映射、空闲连接被中间设备回收，都会触发。判断是不是走了代理，看日志里 DNS 解析出来的地址——`198.18.x.x` / `198.19.x.x` 是代理的 fake-ip，真地址是 `124.221.80.223`。
 
 所以控制台偶尔闪一下离线是正常的。要是长时间回不来：
 
