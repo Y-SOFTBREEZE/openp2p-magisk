@@ -509,13 +509,16 @@ diag() {
             via=$(ip route get "$sip" 2>/dev/null | head -n1)
             echo "${via:-（读取失败）}"
             echo "默认路由 : $(ip route show default 2>/dev/null | head -n1)"
-            vpnif=$(ip link 2>/dev/null | sed -n 's/^[0-9]*: \([^:@]*\):.*/\1/p' | grep -Ei '^(tun|utun|ppp|wg|clash)' | tr '\n' ' ')
+            # tunl0 是内核自带的 IPIP 占位接口，恒为 DOWN，别把它当成 VPN；只认 state UP 的
+            vpnif=$(ip link 2>/dev/null | grep 'state UP' | sed -n 's/^[0-9]*: \([^:@]*\):.*/\1/p' | grep -Ei '^(tun|utun|ppp|wg|clash)' | tr '\n' ' ')
             echo "VPN 接口 : ${vpnif:-无（这台手机上没跑 VPN 服务）}"
             case "$via" in
                 *"dev tun"*|*"dev utun"*|*"dev ppp"*|*"dev wg"*)
                     echo "代理位置 : 这台手机（流量进了 VPN 接口，在里面给 openp2p.cn 加 DIRECT）" ;;
                 *"dev wlan"*|*"dev rmnet"*|*"dev eth"*)
-                    echo "代理位置 : 不在手机 —— 流量从上面那个网口正常出去，是路由器/上游在改写 fake-ip" ;;
+                    echo "代理位置 : 不在手机 —— 流量从上面那个网口正常出去，是路由器/上游在改写 fake-ip"
+                    echo "处理办法 : 路由器上跑 OpenClash/ShellClash 的话，加一条 DOMAIN-SUFFIX,openp2p.cn,DIRECT，"
+                    echo "           并把 api.openp2p.cn 加进 Fake-IP 过滤，重启插件后再看这里应变成真实地址" ;;
             esac
             ;;
     esac
